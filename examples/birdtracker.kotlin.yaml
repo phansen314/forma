@@ -1,0 +1,60 @@
+# BirdTracker — Kotlin Target Profile
+#
+# Satellite document for birdtracker.yaml
+# Controls how the core model maps to Kotlin code.
+
+target: kotlin
+
+globals:
+  package: com.example.birdtracker.model
+  immutability: full
+  nullability: strict
+  collections:
+    library: kotlinx-immutable
+    list: PersistentList
+    set: PersistentSet
+    map: PersistentMap
+    custom_wrappers:
+      plist: kotlinx.collections.immutable.PersistentList
+      pset: kotlinx.collections.immutable.PersistentSet
+      pmap: kotlinx.collections.immutable.PersistentMap
+  serialization: kotlinx-serialization
+
+type_mappings:
+  UUID: java.util.UUID
+  string: String
+  text: String
+  int: Int
+  float: Double
+  bool: Boolean
+  datetime: kotlinx.datetime.Instant
+  date: kotlinx.datetime.LocalDate
+  json: kotlinx.serialization.json.JsonElement
+
+composite_types:
+  default: data_class
+
+enums:
+  default: enum_class
+  overrides:
+    Habitat: bitmask
+
+unions:
+  default: sealed_class
+
+entities:
+  default:
+    style: data_class
+    implements: []
+    annotations: []
+  overrides:
+    Bird:
+      annotations: ["@Serializable"]
+      implements: [Identifiable]
+    Observation:
+      annotations: ["@Serializable"]
+
+interfaces:
+  Identifiable:
+    properties:
+      id: UUID

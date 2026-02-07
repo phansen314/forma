@@ -1,0 +1,95 @@
+# BirdTracker — Example Data Model
+#
+# This file demonstrates all core spec features:
+# - meta, composite_types, unions, enums, type_aliases, mixins, entities
+# - Nullability with ?, collection types, relationships
+# - Field syntax: simple (name: type) and constrained (name: [type, constraint])
+
+meta:
+  name: BirdTracker
+  version: "2.0"
+  description: "Bird observation tracking system"
+
+composite_types:
+  ScientificName:
+    common: string
+    scientific: string
+
+  Location:
+    latitude: float
+    longitude: float
+    altitude: float?          # nullable member within composite
+
+unions:
+  MediaAttachment:
+    common:                   # shared fields across all variants
+      url: string
+      caption: string?
+    Photo:
+      width: int
+      height: int
+    Audio:
+      duration_seconds: float
+      format: string
+
+enums:
+  ConservationStatus: [least_concern, vulnerable, endangered, critical, extinct]
+  Habitat: [forest, wetland, grassland, coastal, urban]
+
+type_aliases:
+  BirdId: UUID
+  UserId: UUID
+  Email: string
+
+mixins:
+  Timestamped:
+    created_at: datetime
+    updated_at: datetime?
+
+entities:
+  User:
+    use: [Timestamped]
+    fields:
+      id: [UserId, primary_key]
+      username: [string, unique]
+      email: [Email, unique]
+
+    relationships:
+      observations: { target: Observation, cardinality: one_to_many }
+
+  Bird:
+    use: [Timestamped]
+    fields:
+      id: [BirdId, primary_key]
+      name: ScientificName                # composite type
+      status: ConservationStatus          # enum type
+      habitats: list(Habitat)             # collection of enum
+      description: text?                  # nullable, simple form
+      wingspan_cm: float?
+      photo_url: string?
+
+    relationships:
+      observations: { target: Observation, cardinality: one_to_many }
+      tags: { target: Tag, cardinality: many_to_many }
+
+  Observation:
+    use: [Timestamped]
+    fields:
+      id: [UUID, primary_key]
+      timestamp: datetime
+      location: Location?                 # nullable composite
+      notes: text?
+      count: [int, default: 1]            # default value
+      media: MediaAttachment?             # nullable union type
+
+    relationships:
+      bird: { target: Bird, cardinality: many_to_one }
+      observer: { target: User, cardinality: many_to_one }
+
+  Tag:
+    fields:
+      id: [UUID, primary_key]
+      label: [string, unique]
+
+    relationships:
+      birds: { target: Bird, cardinality: many_to_many }
