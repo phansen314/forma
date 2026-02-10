@@ -1,0 +1,110 @@
+# BirdTracker — SQL Target Profile
+#
+# Satellite document for birdtracker.forma
+# Controls how the core model maps to PostgreSQL DDL.
+
+target: sql
+
+globals:
+  dialect: postgresql
+  schema: public
+  naming:
+    tables: snake_case_plural          # User → users
+    columns: snake_case                # createdAt → created_at
+    foreign_keys: "{table}_{column}"   # e.g., observations.bird_id
+    join_tables: "{table1}_{table2}"   # e.g., birds_tags
+    indexes: "idx_{table}_{columns}"   # e.g., idx_users_username
+    primary_keys: "pk_{table}"         # e.g., pk_users
+    unique_constraints: "uq_{table}_{column}"
+
+type_mappings:
+  UUID: UUID
+  string: VARCHAR(255)
+  text: TEXT
+  int: INTEGER
+  float: DOUBLE PRECISION
+  bool: BOOLEAN
+  datetime: TIMESTAMPTZ
+  date: DATE
+  json: JSONB
+
+types:
+  default: embedded_columns
+  # embedded_columns → flattened with prefix: location_latitude, location_longitude
+  # json_column      → stored as JSONB in a single column
+  # separate_table   → normalized into its own table with FK
+
+  with_primary_key:
+    strategy: table
+    generate_pk_default: true           # DEFAULT gen_random_uuid()
+    timestamps:
+      created_at_default: NOW()
+      updated_at_trigger: true          # auto-update via trigger
+
+  overrides: {}
+
+enums:
+  default: native_enum
+  # native_enum → CREATE TYPE ... AS ENUM (...)
+  # check       → VARCHAR + CHECK constraint
+  # lookup_table → separate table with FK reference
+
+  overrides:
+    Habitat: check
+    # Habitat uses CHECK because it appears in a [Habitat] collection field,
+    # which maps to a text array — native enums can't be array elements
+    # in all PostgreSQL versions without casts.
+
+type_aliases:
+  default: transparent
+  # transparent → resolves to base type, no SQL-level distinction
+  # domain     → CREATE DOMAIN Name AS Type (named type with optional constraints)
+
+  overrides: {}
+
+unions:
+  default: jsonb_column
+  # jsonb_column      → single JSONB column with discriminator field
+  # single_table      → type column + nullable variant columns
+  # separate_tables   → one table per variant with shared PK
+
+  overrides: {}
+
+relationships:
+  one_to_many:
+    fk_column: "{target}_id"            # observations.bird_id
+    fk_constraint: true
+    on_delete: CASCADE
+
+  many_to_one:
+    fk_column: "{target}_id"
+    fk_constraint: true
+    on_delete: RESTRICT
+
+  many_to_many:
+    join_table: "{source}_{target}"     # birds_tags
+    source_fk: "{source}_id"
+    target_fk: "{target}_id"
+    on_delete: CASCADE
+
+indexes:
+  User:
+    - columns: [username]
+      unique: true
+    - columns: [email]
+      unique: true
+
+  Bird:
+    - columns: [name_common]
+    - columns: [status]
+
+  Observation:
+    - columns: [timestamp]
+    - columns: [bird_id]
+    - columns: [observer_id]
+    - columns: [location_latitude, location_longitude]
+      name: idx_observations_location
+
+  Tag:
+    - columns: [label]
+      unique: true

@@ -1,6 +1,6 @@
 # BirdTracker — Kotlin Target Profile
 #
-# Satellite document for birdtracker.yaml
+# Satellite document for birdtracker.forma
 # Controls how the core model maps to Kotlin code.
 
 target: kotlin
@@ -11,13 +11,10 @@ globals:
   nullability: strict
   collections:
     library: kotlinx-immutable
-    list: PersistentList
-    set: PersistentSet
-    map: PersistentMap
+    collection: PersistentList       # default for [T] (= coll<T>)
+    association: PersistentMap        # default for {K, V} (= dict<K, V>)
     custom_wrappers:
-      plist: kotlinx.collections.immutable.PersistentList
-      pset: kotlinx.collections.immutable.PersistentSet
-      pmap: kotlinx.collections.immutable.PersistentMap
+      tree: com.example.collections.Tree
   serialization: kotlinx-serialization
 
 type_mappings:
@@ -31,18 +28,7 @@ type_mappings:
   date: kotlinx.datetime.LocalDate
   json: kotlinx.serialization.json.JsonElement
 
-composite_types:
-  default: data_class
-
-enums:
-  default: enum_class
-  overrides:
-    Habitat: bitmask
-
-unions:
-  default: sealed_class
-
-entities:
+types:
   default:
     style: data_class
     implements: []
@@ -53,6 +39,20 @@ entities:
       implements: [Identifiable]
     Observation:
       annotations: ["@Serializable"]
+
+enums:
+  default: enum_class
+  overrides:
+    Habitat: bitmask
+
+type_aliases:
+  default: typealias
+  overrides:
+    BirdId: value_class
+    UserId: value_class
+
+unions:
+  default: sealed_class
 
 interfaces:
   Identifiable:

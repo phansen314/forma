@@ -2,7 +2,7 @@
 
 ## Overview
 
-A satellite document that provides Kotlin-specific generation directives. The agent reads this alongside the core structural spec (`model.yaml`) when generating Kotlin code.
+A satellite document that provides Kotlin-specific generation directives. The agent reads this alongside the core structural spec (`model.forma`) when generating Kotlin code.
 
 This file does **not** redefine structure. It tells the generator **how** to express that structure in Kotlin.
 
@@ -33,16 +33,11 @@ globals:
     # kotlinx-immutable → kotlinx.collections.immutable (PersistentList, PersistentSet, PersistentMap)
     # stdlib            → kotlin.collections (List, Set, Map — already read-only interfaces)
     
-    # How built-in wrappers from core spec map to Kotlin types:
-    list: PersistentList                # or List, MutableList, ImmutableList
-    set: PersistentSet                  # or Set, MutableSet, ImmutableSet
-    map: PersistentMap                  # or Map, MutableMap, ImmutableMap
+    # How structural primitives from core spec map to Kotlin types:
+    collection: PersistentList          # [T] (= coll<T>) → PersistentList<T>
+    association: PersistentMap          # {K, V} (= dict<K, V>) → PersistentMap<K, V>
 
-    # Custom wrappers — extends the core spec's collection vocabulary:
     custom_wrappers:
-      plist: kotlinx.collections.immutable.PersistentList
-      pset: kotlinx.collections.immutable.PersistentSet
-      pmap: kotlinx.collections.immutable.PersistentMap
       tree: com.example.collections.Tree
 
   serialization: kotlinx-serialization
@@ -64,19 +59,6 @@ type_mappings:
   datetime: kotlinx.datetime.Instant
   date: kotlinx.datetime.LocalDate
   json: kotlinx.serialization.json.JsonElement
-
-# ──────────────────────────────────────
-# Composite type directives
-# ──────────────────────────────────────
-composite_types:
-  default: data_class
-  # data_class    → data class with val properties
-  # value_class   → @JvmInline value class (single-field composites only)
-  # interface     → interface with val properties
-
-  overrides:
-    # Single-field composites can use value classes for zero-overhead wrapping
-    # (not applicable to current model, but available)
 
 # ──────────────────────────────────────
 # Enum directives
@@ -106,7 +88,7 @@ enums:
     #     }
     #   }
     #
-    # The core spec's list(Habitat) field collapses to a single HabitatFlags
+    # The core spec's [Habitat] field collapses to a single HabitatFlags
 
 # ──────────────────────────────────────
 # Union directives
@@ -124,21 +106,22 @@ unions:
   # MediaAttachment: sealed_interface
 
 # ──────────────────────────────────────
-# Entity directives
+# Type directives
 # ──────────────────────────────────────
-entities:
+types:
   default:
     style: data_class
     # data_class → data class (equals, hashCode, copy, destructuring)
+    # value_class → @JvmInline value class (single-field types only)
     # class      → regular class
     # interface  → interface (for multi-platform expect/actual)
 
     implements: []
-    # Interfaces all generated entities should implement
+    # Interfaces all generated types should implement
     # e.g., [Identifiable, Timestamped]
 
     annotations: []
-    # Annotations applied to all entities
+    # Annotations applied to all types
     # e.g., ["@Serializable"]
 
   overrides:
@@ -156,8 +139,8 @@ interfaces:
   Identifiable:
     properties:
       id: UUID
-    # Entities implementing this get `: Identifiable` in their declaration.
-    # The generator verifies the entity has a matching `id` field.
+    # Types implementing this get `: Identifiable` in their declaration.
+    # The generator verifies the type has a matching `id` field.
 ```
 
 ---
@@ -174,7 +157,7 @@ import kotlinx.datetime.Instant
 import kotlinx.serialization.Serializable
 import java.util.UUID
 
-// From composite_types
+// From types (value types — no key designation in satellite)
 data class ScientificName(
     val common: String,
     val scientific: String,
@@ -234,7 +217,7 @@ enum class ConservationStatus {
     EXTINCT,
 }
 
-// Entity (uses Timestamped mixin — createdAt, updatedAt)
+// From types (identity types — satellite designates key + persistence)
 @Serializable
 data class Bird(
     val id: UUID,
@@ -248,7 +231,7 @@ data class Bird(
     val updatedAt: Instant?,             // from Timestamped mixin
 ) : Identifiable
 
-// Entity with union-typed field
+// Type with union-typed field
 @Serializable
 data class Observation(
     val id: UUID,
@@ -266,13 +249,15 @@ data class Observation(
 
 ## Design Notes
 
-**Why a separate file?** The core spec says `Bird` has a field `habitats: list(Habitat)`. That's structurally correct — it's a collection of habitat values. But in Kotlin, the *optimal* representation might be a bitmask integer, or a `PersistentSet<Habitat>`, or an `EnumSet<Habitat>`. That's a generation concern, not a structural one.
+**Why a separate file?** The core spec says `Bird` has a field `habitats: [Habitat]`. That's structurally correct — it's a collection of habitat values. But in Kotlin, the *optimal* representation might be a bitmask integer, or a `PersistentSet<Habitat>`, or an `EnumSet<Habitat>`. That's a generation concern, not a structural one. The `types:` section in the satellite profile controls how each type is represented — value types like `Location` and identity types like `Bird` can have different strategies via the `overrides` map.
 
-**Bitmask generation**: When an enum is marked `bitmask`, the generator produces a `@JvmInline value class` wrapping an `Int`. This gives type safety (can't accidentally pass a raw `Int` where `HabitatFlags` is expected) with zero runtime allocation overhead — the JVM sees a plain `int` at the call site. Any `list(E)` or `set(E)` field referencing a bitmask enum collapses to a single value class field. The generator also produces `contains`, `plus`, `minus` operators and `NONE`/`ALL` constants.
+**Bitmask generation**: When an enum is marked `bitmask`, the generator produces a `@JvmInline value class` wrapping an `Int`. This gives type safety (can't accidentally pass a raw `Int` where `HabitatFlags` is expected) with zero runtime allocation overhead — the JVM sees a plain `int` at the call site. Any `[E]` field referencing a bitmask enum collapses to a single value class field. The generator also produces `contains`, `plus`, `minus` operators and `NONE`/`ALL` constants.
 
 **Union → sealed class**: Unions are a natural fit for Kotlin's sealed class hierarchies. Common fields become `abstract` properties on the sealed parent, ensuring the compiler enforces them on every variant. `when` expressions over a sealed class are exhaustive — the compiler catches missing variants. The `sealed_interface` option is available when variants need to implement multiple interfaces.
 
 **Immutability strategy**: `full` immutability means the generated code is safe to share across coroutines without copying — `PersistentList` from kotlinx.collections.immutable gives structural sharing out of the box. The `partial` option uses Kotlin's read-only `List` interface (which doesn't guarantee the underlying implementation is immutable).
+
+**Unified `types:` section**: The satellite profile uses a single `types:` section to control all types — both value types (like `Location`) and identity types (like `Bird`). Per-type overrides select annotations, interfaces, and style. The satellite doesn't need separate sections because satellite-level signals (constraints, persistence strategies, key designations) already distinguish type roles.
 
 **Profile inheritance**: A project might have a base Kotlin profile and override it per module:
 
