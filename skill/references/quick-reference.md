@@ -1,5 +1,9 @@
 # Data Model Format — Quick Reference
 
+## Hub Formats
+
+`.forma` — S-expression DSL. Satellites are YAML.
+
 ## Primitives
 
 `string` `text` `int` `float` `bool` `datetime` `date` `UUID` `json`
@@ -8,99 +12,140 @@
 
 Append `?` to any type. Non-null by default.
 
-```yaml
-name: string          # required
-bio: text?            # nullable
+```forma
+name: string          // required
+bio: text?            // nullable
 ```
 
 ## Collections
 
-```yaml
-tags: list(string)        # ordered
-unique_tags: set(string)  # unique
-metadata: map(string, json)
-items: list(string)?      # nullable list
+```forma
+tags: [string]              // collection: zero or more values
+metadata: {string, json}    // association: key-value pairs
+items: [string]?            // nullable collection
+scores: [float?]            // nullable elements (warns)
 ```
 
-Custom wrappers allowed — defined in target profiles: `plist(T)`, `tree(T)`, etc.
+Named wrappers allowed — defined in target profiles: `tree<T>`, etc.
 
 ## Field Syntax
 
-```yaml
-# Simple — no constraints:
+Every field is `name: type` or `name: type?`. Nothing else in the hub.
+
+```forma
 name: string
 location: Location?
-
-# Constrained — type + constraints as list:
-id: [UUID, primary_key]
-email: [Email, unique]
-count: [int, default: 1]
+tags: [string]
+bird: Bird
+observations: [Observation]
 ```
 
-Constraints: `primary_key`, `unique`, `default: <value>`
+Constraints (`primary_key`, `unique`, `default`) are satellite concerns.
 
-## Type System — Six Concepts
+## `.forma` Syntax
 
-```yaml
-# 1. Composite types — named field groups, used as types
-composite_types:
-  Location:
-    latitude: float
-    longitude: float
+```forma
+// Comments use double-slash
 
-# 2. Unions — discriminated sum types
-unions:
-  Payment:
-    common:               # optional shared fields
-      amount: float
-    CreditCard:
-      number: string
-    BankTransfer:
-      account: string
+(model AppName v1.0 "Description")
 
-# 3. Enums — fixed value sets
-enums:
-  Status: [active, archived, deleted]
+// Type aliases — semantic names for base types
+(alias UserId UUID)
+(alias Email string)
 
-# 4. Type aliases — semantic names
-type_aliases:
-  UserId: UUID
-  Email: string
+// Mixins — shared field templates (optional type params in <>)
+(mixin Timestamped
+  created_at: datetime
+  updated_at: datetime?)
 
-# 5. Mixins — shared field templates (NOT types)
-mixins:
-  Timestamped:
+(mixin Versioned<T>
+  current: T
+  history: [T]
+  version: int)
+
+// Enums — fixed value sets (space-separated)
+(enum Status active archived deleted)
+
+// Types — structured types with optional mixin inheritance
+(type Location
+  latitude: float
+  longitude: float)
+
+(type User [Timestamped]
+  id: UserId
+  email: Email
+  location: Location?
+  posts: [Post])
+
+(type Bird [Versioned<Bird> Timestamped]
+  name: string
+  species: string)
+
+// Unions — discriminated sum types
+(union Payment
+  (common
+    amount: float)
+  (CreditCard
+    number: string)
+  (BankTransfer
+    account: string)
+  Cash)                        // fieldless variant (marker)
+```
+
+## Plural Forms
+
+Group multiple definitions in a single form. Same IR output as singular forms.
+
+```forma
+(aliases
+  UserId UUID
+  Email string)
+
+(enums
+  (Status active archived deleted)
+  (Role admin editor viewer))
+
+(mixins
+  (Timestamped
     created_at: datetime
-    updated_at: datetime?
+    updated_at: datetime?)
+  (Versioned<T>
+    current: T
+    history: [T]
+    version: int))
 
-# 6. Entities — domain objects with identity
-entities:
-  User:
-    use: [Timestamped]        # pull in mixin fields
-    fields:
-      id: [UserId, primary_key]
-      email: [Email, unique]
-    relationships:
-      posts: { target: Post, cardinality: one_to_many }
+(types
+  (Location
+    latitude: float
+    longitude: float)
+  (User [Timestamped]
+    id: UserId
+    email: Email))
+
+(unions
+  (Payment
+    (common amount: float)
+    (CreditCard number: string)
+    Cash))
 ```
 
-## Relationships
+Singular and plural forms can be mixed freely.
 
-```yaml
-relationships:
-  posts: { target: Post, cardinality: one_to_many }
-  author: { target: User, cardinality: many_to_one }
-  tags: { target: Tag, cardinality: many_to_many }
-  profile: { target: Profile, cardinality: one_to_one }
-```
+## Cardinality Inference
 
-FK derivation is a target profile concern, not specified in core model.
+Targets infer cardinality from cross-references:
+
+| Side A | Side B | Cardinality |
+|--------|--------|-------------|
+| `posts: [Post]` | `author: User` | **1:N** |
+| `tags: [Tag]` | `posts: [Post]` | **N:M** |
+| `profile: Profile` | `user: User` | **1:1** |
 
 ## Document Architecture
 
 ```
-model.yaml              ← Structure (hub)
-model.validate.yaml     ← Validation rules (satellite)
-model.kotlin.yaml       ← Kotlin target profile (satellite)
-model.sql.yaml          ← SQL target profile (satellite)
+model.forma              ← Structure (hub)
+model.validate.yaml      ← Validation rules (satellite)
+model.kotlin.yaml        ← Kotlin target profile (satellite)
+model.sql.yaml           ← SQL target profile (satellite)
 ```

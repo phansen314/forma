@@ -1,0 +1,132 @@
+// Wingspan — Board Game Data Model
+
+(model wingspan v1.0 "core data shape for modelling wingspan game components")
+
+// Type aliases
+(aliases
+  BirdId int
+  BonusId int
+  GoalId int
+  PlayerId int
+  Round int)
+
+// Enums
+(enums
+  (Color white brown pink teal yellow)
+  (Expansion asia european oceania core swift)
+  (Nest bowl cavity ground platform wild)
+  (Beak left right)
+  (Food seed fish fruit invertebrate rodent nectar wild)
+  (Habitat forest grassland wetland)
+  (Action play_bird gain_food lay_eggs draw_cards)
+  (CostType all choice)
+  (BirdAttribute predator flocking)
+  (BirdBonusAttribute
+    anatomist cartographer historian photographer
+    backyard_birder bird_bander bird_counter bird_feeder
+    diet_specialist enclosure_builder falconer fishery_manager
+    food_web_expert forester large_bird_specialist nest_box_builder
+    omnivore_expert passerine_specialist platform_builder prairie_manager
+    rodentologist viticulturalist wetland_scientist wildlife_gardener
+    caprimulgiform_specialist small_clutch_specialist endangered_species_protector))
+
+// Unions
+(unions
+  (DiceFace
+    InvertebrateFace
+    InvertebrateSeedFace
+    FishFace
+    RodentFace
+    NectarFruitFace
+    NectarSeedFace)
+  (BirdWingspan
+    Flightless
+    (Winged
+      span: int))
+  (BirdCost
+    (FoodCost
+      food: Food)
+    (CompositeCost
+      type: CostType
+      costs: [BirdCost])))
+
+// Value types
+(types
+  (BirdName
+    common: string
+    scientific: string)
+  (PowerMeta
+    color: Color
+    text: string)
+  (Ruling
+    text: string
+    source: string)
+  (BirdFeeder
+    slots: [DiceFace])
+  (PlayerFood
+    supply: {Food, int})
+  (ActionsTaken
+    actions: [Action]))
+
+// Card and game-state types
+(types
+  (BirdState
+    id: BirdId
+    tucked_count: int
+    cached_food: {Food, int}
+    eggs: int
+    lives_in: Habitat
+    position: int)
+  (BirdCard
+    id: BirdId
+    name: BirdName
+    expansion: Expansion
+    power: PowerMeta
+    victory_points: int
+    nest: Nest?
+    egg_capacity: int
+    wingspan: BirdWingspan
+    habitats: [Habitat]
+    cost: BirdCost
+    beak: [Beak]
+    ruling: [Ruling]
+    attributes: [BirdAttribute]
+    bonus_attributes: [BirdBonusAttribute])
+  (BonusCard
+    id: BonusId
+    name: string
+    expansion: Expansion
+    automa: bool
+    condition: string
+    explanatory_text: string
+    victory_points: int
+    note: string
+    rulings: [Ruling])
+  (GoalMeta
+    id: GoalId
+    name: string
+    expansion: Expansion
+    duet: bool
+    condition: string
+    explanatory_text: string)
+  (PlayerState
+    birds: [BirdState]
+    cards: [BirdId]
+    bonus_cards: [BonusId]
+    food: PlayerFood
+    actions_left: int
+    actions_taken: ActionsTaken)
+  (GameState
+    players: {PlayerId, PlayerState}
+    active_player: PlayerId
+    first_player: PlayerId
+    round: Round
+    turn: int
+    feeder: BirdFeeder
+    tray: [BirdId]
+    deck: [BirdId]
+    bonus: [BonusId]
+    discard: [BirdId]
+    bonus_discard: [BonusId]
+    goals: [GoalId]
+    scores: {Round, {PlayerId, int}}))

@@ -1,0 +1,75 @@
+// BirdTracker — Example Data Model
+//
+// This file demonstrates all .forma syntax features:
+// - S-expression forms: (keyword name ...body...)
+// - Nullability with ?, structural primitives [T] and {K, V}
+// - Mixin inheritance with [MixinName] bracket lists
+// - Angle-bracket generics: tree<T>, Versioned<Bird>
+// - References as plain field types (targets infer cardinality)
+
+(model BirdTracker v7.0 "Bird observation tracking system")
+
+(alias BirdId UUID)
+(alias UserId UUID)
+(alias Email string)
+
+(mixin Timestamped
+  created_at: datetime
+  updated_at: datetime?)
+
+(enum ConservationStatus least_concern vulnerable endangered critical extinct)
+
+(enum Habitat forest wetland grassland coastal urban)
+
+(type ScientificName
+  common: string
+  scientific: string)
+
+(type Location
+  latitude: float
+  longitude: float
+  altitude: float?)
+
+(type User [Timestamped]
+  id: UserId
+  username: string
+  email: Email
+  observations: [Observation])
+
+(type Bird [Timestamped]
+  id: BirdId
+  name: ScientificName
+  status: ConservationStatus
+  habitats: [Habitat]
+  description: text?
+  wingspan_cm: float?
+  photo_url: string?
+  metadata: {string, json}?
+  observations: [Observation]
+  tags: [Tag])
+
+(type Observation [Timestamped]
+  id: UUID
+  timestamp: datetime
+  location: Location?
+  notes: text?
+  count: int
+  media: MediaAttachment?
+  bird: Bird
+  observer: User)
+
+(type Tag
+  id: UUID
+  label: string
+  birds: [Bird])
+
+(union MediaAttachment
+  (common
+    url: string
+    caption: string?)
+  (Photo
+    width: int
+    height: int)
+  (Audio
+    duration_seconds: float
+    format: string))
