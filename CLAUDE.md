@@ -27,23 +27,23 @@ No code to build or test — this repo is a spec, agent skill, and examples.
 
 ## Core Design Principles
 
-- **Structure, not validation.** The hub describes what data *is* (types, fields). Behavioral rules (format checks, range constraints, immutability) and structural constraints (primary keys, unique, defaults) belong in satellites.
+- **Structure, not validation.** The hub describes what data *is* (shapes, fields). Behavioral rules (format checks, range constraints, immutability) and structural constraints (primary keys, unique, defaults) belong in satellites.
 - **Hub-and-satellite architecture.** `model.forma` is the hub (pure shape). Satellites (`model.validate.yaml`, `model.kotlin.yaml`, etc.) add target-specific or behavioral context. Satellites reference the hub by name, never redefine structure. The hub never grows for satellite concerns.
 - **Non-null by default.** Append `?` to opt into nullable. No `required` keyword.
-- **Mixins over inheritance.** Shared fields use `mixins` + `[MixinName]`, not class inheritance. Mixins are field templates, not standalone types.
+- **Mixins over inheritance.** Shared fields use `mixins` + `[MixinName]`, not class inheritance. Mixins are field templates with optional composition, not standalone types.
 - **Structural primitives over behavioral wrappers.** `[T]` (collection) and `{K, V}` (association) describe shape without implying ordering, uniqueness, or lookup behavior. Target profiles decide the concrete type.
 - **Angle brackets for generics.** All type parameterization uses `<>`: `tree<T>`, `result<Bird, Error>`, `Versioned<Bird>`. `[T]` and `{K,V}` are shorthand sugar for `coll<T>` and `dict<K,V>`.
 - **References are fields.** `observations: [Observation]` and `bird: Bird` — targets infer cardinality from cross-references. No explicit relationship declarations in the hub.
 
-## Five Core Concepts
+## Three Core Concepts
 
 | Concept | Purpose | Used as field type? |
 |---|---|---|
-| Types | Named structured types with optional mixin fields | Yes |
-| Unions | Discriminated sum types | Yes |
-| Enums | Fixed value sets | Yes |
-| Type aliases | Named synonyms for other types | Yes (resolves to target) |
-| Mixins | Shared field templates | No — inlined into types |
+| Shapes | Named structured types with optional mixin fields | Yes |
+| Choices | Discriminated alternatives — enum-like (all bare) or union-like (fielded) | Yes |
+| Mixins | Shared field templates with optional composition | No — inlined into shapes |
+
+**Atoms**: Any name not declared as a shape, choice, or mixin is an atom. Atoms are valid — target profiles map them (`BirdId`, `UserId`, `Email`, `string`, `UUID`, etc.).
 
 ## Field Syntax
 
@@ -64,9 +64,11 @@ Constraints (`primary_key`, `unique`, `default`) are satellite concerns.
 
 Every declaration is a parenthesized form. Singular forms define one item; plural forms group multiple items.
 
-**Singular:** `(model ...)`, `(alias ...)`, `(mixin ...)`, `(enum ...)`, `(type ...)`, `(union ...)`
+**Namespace (optional):** `(namespace com.example.foo)` — at most one per file, stored in `meta.namespace`. Generators use it as default package when satellite doesn't override via `globals.package`.
 
-**Plural:** `(aliases Name1 Target1 Name2 Target2 ...)`, `(enums (Name val ...) ...)`, `(mixins (Name field ...) ...)`, `(types (Name field ...) ...)`, `(unions (Name variant ...) ...)`
+**Singular:** `(model ...)`, `(mixin ...)`, `(choice ...)`, `(shape ...)`
+
+**Plural:** `(mixins (Name field ...) ...)`, `(choices (Name variant ...) ...)`, `(shapes (Name field ...) ...)`
 
 Singular and plural forms can be mixed freely in the same file.
 
@@ -81,8 +83,8 @@ model.{target}.{layer}.yaml — Layer override (e.g., model.kotlin.api.yaml)
 
 ## Naming Conventions
 
-- Types, unions, mixins: `PascalCase`
-- Fields, enum values: `snake_case`
+- Shapes, choices, mixins: `PascalCase`
+- Fields, choice variants: `snake_case`
 - Mixins: descriptive adjectives (`Timestamped`, `SoftDeletable`, `Auditable`)
 
 ## Key Decision Boundaries
@@ -94,4 +96,4 @@ When deciding where something belongs, ask: "Does this describe what the data *i
 - Validation, format checks, immutability → `model.validate.yaml`
 - Type mappings, collection strategies, serialization, FK naming → target profile
 - Derived types (DTOs like `BirdCreate`, `BirdPatch`) → target layer profile
-- Whether a type is a table, embedded value, etc. → target profile
+- Whether a shape is a table, embedded value, etc. → target profile

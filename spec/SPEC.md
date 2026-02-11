@@ -1,4 +1,4 @@
-# Data Model Definition Format — v7
+# Data Model Definition Format — v8
 
 ## Overview
 
@@ -10,7 +10,7 @@ Satellite documents (validation, target profiles) are YAML.
 
 ## Design Principles
 
-- **Structure, not validation**: This spec describes the *shape* of data — types, fields, and references. Behavioral rules (format validation, range checks, immutability) belong in a validation satellite document.
+- **Structure, not validation**: This spec describes the *shape* of data — shapes, fields, and references. Behavioral rules (format validation, range checks, immutability) belong in a validation satellite document.
 - **Pure shape in the hub**: The hub describes *what data is*. Constraints (`primary_key`, `unique`, `default`), relationship cardinality declarations, and foreign key derivation are satellite concerns — they describe how data is *used* or *stored*.
 - **Minimal boilerplate**: The common case should be short; verbosity only when expressing complex constraints
 - **Agent-friendly**: Semi-structured enough for agents to parse and infer meaning, constrained enough to validate
@@ -24,14 +24,14 @@ Satellite documents (validation, target profiles) are YAML.
 The data model is defined across multiple focused documents. The hub (`.forma`) is small, target-agnostic, and concerned only with shape. Satellite documents add context for specific concerns:
 
 ```
-model.forma              ← Structure (hub): types, fields, references
+model.forma              ← Structure (hub): shapes, fields, references
 model.validate.yaml      ← Validation: format rules, range checks, identity, constraints
 model.kotlin.yaml        ← Kotlin target profile: collections, immutability
 model.typescript.yaml    ← TypeScript target profile: Zod vs io-ts, ESM vs CJS
 model.sql.yaml           ← SQL target profile: dialect, indexing strategy, PK/FK/unique
 ```
 
-Each satellite document references types and fields from the hub by name. The agent loads whichever documents are relevant to the current task — generating Kotlin code pulls in the hub + `model.kotlin.yaml`; adding validation pulls in the hub + `model.validate.yaml`.
+Each satellite document references shapes and fields from the hub by name. The agent loads whichever documents are relevant to the current task — generating Kotlin code pulls in the hub + `model.kotlin.yaml`; adding validation pulls in the hub + `model.validate.yaml`.
 
 This keeps each file small and single-purpose. The hub never grows to accommodate satellite concerns.
 
@@ -39,17 +39,23 @@ This keeps each file small and single-purpose. The hub never grows to accommodat
 
 ## Type System
 
-The spec provides five concepts for describing data shape:
+The spec provides three concepts for describing data shape:
 
 | Concept | Purpose | Used as a field type? |
 |---|---|---|
-| **Types** | Named structured types with optional mixin fields | Yes |
-| **Unions** | Discriminated sum types — exactly one of several variants | Yes |
-| **Enums** | Fixed set of named values | Yes |
-| **Type aliases** | Named synonyms for other types | Yes (resolves to target) |
-| **Mixins** | Shared field templates inlined into types | No — field shortcut only |
+| **Shapes** | Named structured types with optional mixin fields | Yes |
+| **Choices** | Discriminated alternatives — enum-like (all bare) or union-like (fielded variants) | Yes |
+| **Mixins** | Shared field templates inlined into shapes, with optional composition | No — field shortcut only |
 
 These sit on top of two structural primitives for grouping values: `[T]` (collection) and `{K, V}` (association), plus optional named wrappers like `tree<T>`.
+
+### Atoms
+
+Any name used as a field type that is not declared as a shape, choice, or mixin is an **atom**. Atoms are valid — the hub makes no claim about what they resolve to. Target profiles map atoms to concrete types.
+
+Common atoms by convention: `string`, `int`, `float`, `bool`, `text`, `datetime`, `date`, `UUID`, `json`. Domain-specific atoms like `BirdId`, `UserId`, `Email` carry semantic meaning without requiring a hub-level declaration. Target profiles decide how each atom is represented — a transparent type alias, a branded type, a value class, etc.
+
+The hub never warns about unresolved atoms. Atom resolution is a target concern.
 
 ---
 
@@ -61,24 +67,23 @@ The `.forma` format uses S-expression syntax — every declaration is a parenthe
 
 ```ebnf
 file           = { comment | form } EOF ;
-form           = "(" ( model_form | alias_form | aliases_form
+form           = "(" ( namespace_form | model_form
                      | mixin_form | mixins_form
-                     | enum_form | enums_form
-                     | type_form | types_form
-                     | union_form | unions_form ) ")" ;
+                     | choice_form | choices_form
+                     | shape_form | shapes_form ) ")" ;
+
+namespace_form = "namespace" IDENT ;
 
 model_form     = "model" IDENT version [ STRING ] ;
 version        = IDENT ;
-alias_form     = "alias" IDENT IDENT ;
-aliases_form   = "aliases" { IDENT IDENT } ;
-mixin_form     = "mixin" IDENT [ "<" IDENT { "," IDENT } ">" ] { field } ;
-mixins_form    = "mixins" { "(" IDENT [ "<" IDENT { "," IDENT } ">" ] { field } ")" } ;
-enum_form      = "enum" IDENT { IDENT } ;
-enums_form     = "enums" { "(" IDENT { IDENT } ")" } ;
-type_form      = "type" IDENT [ "[" mixin_ref { mixin_ref } "]" ] { field } ;
-types_form     = "types" { "(" IDENT [ "[" mixin_ref { mixin_ref } "]" ] { field } ")" } ;
-union_form     = "union" IDENT { common_form | variant } ;
-unions_form    = "unions" { "(" IDENT { common_form | variant } ")" } ;
+mixin_form     = "mixin" IDENT [ "<" IDENT { "," IDENT } ">" ]
+                 [ "[" mixin_ref { mixin_ref } "]" ] { field } ;
+mixins_form    = "mixins" { "(" IDENT [ "<" IDENT { "," IDENT } ">" ]
+                 [ "[" mixin_ref { mixin_ref } "]" ] { field } ")" } ;
+choice_form    = "choice" IDENT { common_form | variant } ;
+choices_form   = "choices" { "(" IDENT { common_form | variant } ")" } ;
+shape_form     = "shape" IDENT [ "[" mixin_ref { mixin_ref } "]" ] { field } ;
+shapes_form    = "shapes" { "(" IDENT [ "[" mixin_ref { mixin_ref } "]" ] { field } ")" } ;
 common_form    = "(" "common" { field } ")" ;
 variant        = IDENT | "(" IDENT { field } ")" ;
 
@@ -89,36 +94,50 @@ base_type      = IDENT [ "<" type_expr { "," type_expr } ">" ]
                | "[" type_expr { "," type_expr } "]"
                | "{" type_expr "," type_expr "}" ;
 
-comment        = "//" { any } EOL ;
+comment        = "//" { any } EOL
+               | "/*" { any | comment } "*/" ;
 STRING         = '"' { any } '"' ;
 IDENT          = letter { letter | digit | "_" | "." } ;
 ```
 
-Parentheses delimit forms. Brackets serve two roles: anonymous collections (`[T]`) and mixin lists on types (`[Timestamped]`). Braces delimit anonymous associations (`{K, V}`). Angle brackets delimit type parameters (`tree<T>`, `Versioned<Bird>`). Commas appear inside collections, associations, and generic argument lists.
+Parentheses delimit forms. Brackets serve two roles: anonymous collections (`[T]`) and mixin lists on shapes and mixins (`[Timestamped]`). Braces delimit anonymous associations (`{K, V}`). Angle brackets delimit type parameters (`tree<T>`, `Versioned<Bird>`). Commas appear inside collections, associations, and generic argument lists. Comment delimiters (`//`, `/*`, `*/`) are stripped during lexing and do not appear as tokens. The token count remains 12.
 
 ### Comments
 
 ```forma
 // Line comments use double-slash
+
+/* Block comments use slash-star ... star-slash */
+
+/*
+ * Multi-line block comments work naturally.
+ * Useful for file headers and documentation.
+ */
+
+/* Block comments /* can be nested */ like this */
 ```
+
+Block comments support nesting — each `/*` must be matched by a corresponding `*/`. This allows commenting out code that already contains block comments. Unterminated block comments are a parse error.
+
+### Namespace Declaration
+
+```forma
+(namespace com.example.birdtracker)
+```
+
+An optional form declaring the model's logical namespace — a dotted identifier representing its package or module identity. At most one namespace declaration per file.
+
+The namespace is stored in the IR under `meta.namespace`. Generators use it as the default package/module when the satellite doesn't override via `globals.package`. Within the hub, the namespace has no effect on name resolution — names stay flat.
+
+Convention: the namespace declaration appears before `(model ...)`, but order is not enforced by the parser.
 
 ### Model Declaration
 
 ```forma
-(model BirdTracker v7.0 "Bird observation tracking system")
+(model BirdTracker v8.0 "Bird observation tracking system")
 ```
 
 One form declares the model name, version, and optional description.
-
-### Type Aliases
-
-```forma
-(alias BirdId UUID)
-(alias UserId UUID)
-(alias Email string)
-```
-
-Aliases provide semantic clarity without creating new structural types. They resolve to their base type during code generation. Target profiles control how aliases are represented — e.g., transparent type aliases, branded types, or zero-cost wrapper types like Kotlin's `@JvmInline value class`.
 
 ### Mixins
 
@@ -128,10 +147,10 @@ Aliases provide semantic clarity without creating new structural types. They res
   updated_at: datetime?)
 ```
 
-Types pull in mixin fields with a bracket list after the name:
+Shapes pull in mixin fields with a bracket list after the name:
 
 ```forma
-(type User [Timestamped]
+(shape User [Timestamped]
   id: UserId
   username: string)
 ```
@@ -148,69 +167,68 @@ Mixins can declare type parameters in angle brackets. The type parameters are su
   history: [T]
   version: int)
 
-(type Bird [Versioned<Bird> Timestamped]
+(shape Bird [Versioned<Bird> Timestamped]
   name: string
   species: Species)
 ```
 
 `Bird` now has `current: Bird`, `history: [Bird]`, `version: int`, plus the `Timestamped` fields. Multiple type parameters are comma-separated: `<T, U>`.
 
+#### Mixin Composition
+
+Mixins can include other mixins using a bracket list, just like shapes:
+
+```forma
+(mixin Timestamped
+  created_at: datetime
+  updated_at: datetime?)
+
+(mixin Auditable [Timestamped]
+  created_by: UserId
+  updated_by: UserId?)
+```
+
+`Auditable` now includes all of `Timestamped`'s fields (`created_at`, `updated_at`) plus its own (`created_by`, `updated_by`). A shape using `[Auditable]` gets all four fields.
+
+Composition is transitive — if `A` includes `B` and `B` includes `C`, then `A` includes the fields of both `B` and `C`.
+
 #### Rules
 
-- **Multiple mixins allowed.** A type can use any number of mixins.
-- **No nesting.** Mixins cannot use other mixins — keep it flat and explicit.
-- **Mixin–mixin conflicts are errors.** If two mixins define the same field name, this is an error. Rename one field or extract a shared mixin.
-- **Type fields shadow mixin fields.** If a type declares a field that also exists in a mixin, the type's own field wins. The validator emits a warning.
-- **Mixins are not types.** You cannot use a mixin name as a field type. `location: Timestamped` is invalid — use a type for typed field groups.
+- **Multiple mixins allowed.** A shape can use any number of mixins.
+- **Mixin composition.** Mixins can include other mixins using bracket lists. Composition is transitive.
+- **Circular composition is an error.** If mixin A includes B and B includes A (directly or transitively), this is an error.
+- **Mixin–mixin conflicts are errors.** If two mixins define the same field name (including via composition), this is an error. Rename one field or extract a shared mixin.
+- **Shape fields shadow mixin fields.** If a shape declares a field that also exists in a mixin, the shape's own field wins. The validator emits a warning.
+- **Mixins are not types.** You cannot use a mixin name as a field type. `location: Timestamped` is invalid — use a shape for typed field groups.
 - **Generic arity is checked.** If a mixin declares type parameters, the mixin reference must supply the same number of type arguments. `[Versioned]` is an error if `Versioned` requires one type argument.
 - **No type parameter constraints.** No bounds like `<T: Timestamped>`. Bounds are a behavioral concern — keep the hub simple.
 
-#### Mixins vs types
+#### Mixins vs shapes
 
 These serve different purposes:
 
-- **Types** define a *named structure* used as a field type. `location: Location` creates a `Location` value *inside* the parent type.
-- **Mixins** define *fields that merge into* the type. `[Timestamped]` adds `created_at` and `updated_at` as top-level fields on the type.
+- **Shapes** define a *named structure* used as a field type. `location: Location` creates a `Location` value *inside* the parent shape.
+- **Mixins** define *fields that merge into* the shape. `[Timestamped]` adds `created_at` and `updated_at` as top-level fields on the shape.
 
-The test: "Is this a value I'd reference as a type?" → type. "Are these fields I want on multiple types?" → mixin.
+The test: "Is this a value I'd reference as a type?" → shape. "Are these fields I want on multiple shapes?" → mixin.
 
-### Enums
+### Choices
+
+Choices unify enums and unions into a single concept. A choice is a set of named alternatives. If all alternatives are bare identifiers (no fields), it behaves like an enum. If any alternative has fields, it behaves like a discriminated union.
+
+#### Enum-like choices (all bare variants)
 
 ```forma
-(enum ConservationStatus least_concern vulnerable endangered critical extinct)
-(enum Habitat forest wetland grassland coastal urban)
+(choice ConservationStatus least_concern vulnerable endangered critical extinct)
+(choice Habitat forest wetland grassland coastal urban)
 ```
 
-Space-separated values inside the form. Enum values are plain identifiers — target profiles handle casing conventions per language.
+Space-separated variant names inside the form. Target profiles decide how to represent these — standard enums, bitmasks, string constants, etc.
 
-### Types
-
-```forma
-(type Location
-  latitude: float
-  longitude: float
-  altitude: float?)
-
-(type Bird [Timestamped]
-  id: BirdId
-  name: ScientificName
-  status: ConservationStatus
-  habitats: [Habitat]
-  description: text?
-  observations: [Observation]
-  tags: [Tag])
-```
-
-Every field is `name: type` or `name: type?`. Nothing else in the hub.
-
-**References are just fields.** `observations: [Observation]` and `bird: Bird` are enough — targets cross-reference field types across type definitions to infer cardinality (see [Cardinality Inference](#cardinality-inference)).
-
-**Type names.** Field types can be any declared name (types, unions, enums, type aliases) or any undeclared name that a target profile maps. The format does not restrict the set of usable type names — type resolution is a target concern. Common conventions include `string`, `int`, `float`, `bool`, `text`, `datetime`, `date`, `UUID`, and `json`, but these are conventions, not a closed set.
-
-### Unions
+#### Union-like choices (fielded variants)
 
 ```forma
-(union MediaAttachment
+(choice MediaAttachment
   (common
     url: string
     caption: string?)
@@ -225,7 +243,7 @@ Every field is `name: type` or `name: type?`. Nothing else in the hub.
 The `(common ...)` sub-form defines fields shared by all variants. Variant sub-forms define variant-specific fields. Fieldless variants are bare identifiers — no sub-form needed:
 
 ```forma
-(union Result
+(choice Result
   (Success
     data: string)
   NotFound
@@ -236,57 +254,39 @@ The `(common ...)` sub-form defines fields shared by all variants. Variant sub-f
 
 #### Rules
 
-- **Unions are types.** They can be used anywhere a type is expected: type fields, other unions, etc.
-- **Variants are not standalone types.** They exist only as members of their union.
-- **Nullable unions work as expected.** `payment: PaymentMethod?` means the field can be null *or* one of the variants.
+- **Choices are types.** They can be used anywhere a type is expected: shape fields, other choices, etc.
+- **Variants are not standalone types.** They exist only as members of their choice.
+- **Nullable choices work as expected.** `payment: PaymentMethod?` means the field can be null *or* one of the variants.
 - **Fieldless variants are allowed.** A variant with no fields acts as a marker/tag.
-- **Variant fields follow standard rules.** Fields inside variants (and common blocks) support the same syntax as type fields, including nullability (`caption: string?`).
-- **Target profiles decide representation.** A Kotlin profile maps this to `sealed class` + `data class` variants. TypeScript maps to discriminated unions. SQL might use a discriminator column — that's a target profile decision.
+- **Variant fields follow standard rules.** Fields inside variants (and common blocks) support the same syntax as shape fields, including nullability (`caption: string?`).
+- **Target profiles decide representation.** A Kotlin profile maps fielded choices to `sealed class` + `data class` variants, and all-bare choices to `enum class`. SQL might use a discriminator column or native enum — that's a target profile decision.
 
 ### Plural Forms
 
-Every singular keyword has a plural counterpart (`aliases`, `enums`, `mixins`, `types`, `unions`) that groups multiple definitions into a single form. The plural form produces the same IR — it is purely a surface-syntax convenience.
+Every singular keyword has a plural counterpart (`mixins`, `choices`, `shapes`) that groups multiple definitions into a single form. The plural form produces the same IR — it is purely a surface-syntax convenience.
 
-**Aliases** use flat identifier pairs (each alias is exactly two tokens):
-
-```forma
-(aliases
-  BirdId int
-  BonusId int
-  GoalId int)
-```
-
-**Enums, mixins, types, and unions** use parenthesized sub-forms:
+**Mixins, choices, and shapes** use parenthesized sub-forms:
 
 ```forma
-(enums
-  (Color white brown pink teal yellow)
-  (Habitat forest wetland grassland))
-
 (mixins
   (Timestamped
     created_at: datetime
     updated_at: datetime?)
-  (Auditable
-    changed_by: string))
+  (Auditable [Timestamped]
+    created_by: UserId
+    updated_by: UserId?))
 
-(types
+(choices
+  (ConservationStatus least_concern vulnerable endangered critical extinct)
+  (Habitat forest wetland grassland coastal urban))
+
+(shapes
   (Location
     latitude: float
     longitude: float)
   (User [Timestamped]
     id: UserId
     name: string))
-
-(unions
-  (Result
-    (Success data: string)
-    NotFound
-    Unauthorized)
-  (DiceFace
-    InvertebrateFace
-    FishFace
-    RodentFace))
 ```
 
 Singular and plural forms can be mixed freely in the same file.
@@ -304,7 +304,7 @@ deleted_at: datetime?       // nullable
 score: float?               // nullable
 ```
 
-This applies to all type positions — aliases, types, enums, unions, and collections:
+This applies to all type positions — shapes, choices, and collections:
 
 ```forma
 nickname: string?
@@ -386,7 +386,7 @@ The hub parser accepts any wrapper name. Target profiles define how each maps to
 
 ## Cardinality Inference
 
-With references as plain field types, targets infer relationship cardinality by cross-referencing types:
+With references as plain field types, targets infer relationship cardinality by cross-referencing shapes:
 
 | Side A | Side B | Inferred cardinality |
 |--------|--------|---------------------|
@@ -427,7 +427,7 @@ flowchart LR
     end
 
     subgraph Stage1[Stage 1: Parse & Validate]
-        S1[Parse hub<br/>Resolve aliases<br/>Expand mixins<br/>Validate references]
+        S1[Parse hub<br/>Expand mixins<br/>Validate references]
     end
 
     subgraph Stage2[Stage 2: Agent Enrichment]
@@ -452,12 +452,11 @@ flowchart LR
 ### Stage 1: Parse & Validate
 
 - Parse hub (`.forma` DSL)
-- Validate top-level structure and type shapes
-- Resolve type aliases to base types
-- Expand types into their member fields
-- Validate all referenced types and union variants exist
-- Expand mixins into target types and check for field conflicts
-- Collect warnings for anything non-fatal (unknown types, unusual patterns)
+- Validate top-level structure and shape definitions
+- Expand mixins into target shapes (including transitive composition)
+- Validate all referenced types exist (shapes, choices, or atoms)
+- Check for field conflicts across composed mixins
+- Collect warnings for anything non-fatal (unusual patterns)
 
 **Output**: A normalized intermediate representation (JSON or typed dataclass tree).
 
@@ -470,11 +469,11 @@ The agent receives the parsed IR and performs interactive refinement. This is a 
 | Task | Example |
 |------|---------|
 | **Flag ambiguities** | "Field `count` on `Observation` — is this the number of birds spotted, or something else? Consider renaming to `birds_spotted`." |
-| **Infer missing info** | "Adding `created_at: datetime` and `updated_at: datetime?` to all types as a common pattern." |
-| **Suggest type promotions** | "Field `status: string` could be an enum. Want me to create `ConservationStatus`?" |
-| **Suggest mixins** | "Types `User`, `Bird`, and `Observation` all declare `created_at: datetime`. Extract to a `Timestamped` mixin?" |
+| **Infer missing info** | "Adding `created_at: datetime` and `updated_at: datetime?` to all shapes as a common pattern." |
+| **Suggest type promotions** | "Field `status: string` could be a choice. Want me to create `ConservationStatus`?" |
+| **Suggest mixins** | "Shapes `User`, `Bird`, and `Observation` all declare `created_at: datetime`. Extract to a `Timestamped` mixin?" |
 | **Validate cross-references** | "You have `[Observation]` on `Bird` but no `bird: Bird` on `Observation`. Adding inverse reference." |
-| **Check naming consistency** | "Types use PascalCase but `bird_meta` is snake_case — normalizing to `BirdMeta`." |
+| **Check naming consistency** | "Shapes use PascalCase but `bird_meta` is snake_case — normalizing to `BirdMeta`." |
 
 **Contract**: The agent operates on the IR and produces a revised IR plus a changelog of modifications and rationale. If clarification is needed, it pauses and prompts the user before proceeding.
 
@@ -489,36 +488,36 @@ The agent reads the finalized IR alongside the relevant target profile(s) and ge
 ```forma
 // BirdTracker — Example Data Model
 
-(model BirdTracker v7.0 "Bird observation tracking system")
+(namespace com.example.birdtracker)
 
-(alias BirdId UUID)
-(alias UserId UUID)
-(alias Email string)
+(model BirdTracker v8.0 "Bird observation tracking system")
 
+// Mixins — shared field templates (with composition)
 (mixin Timestamped
   created_at: datetime
   updated_at: datetime?)
 
-(enum ConservationStatus least_concern vulnerable endangered critical extinct)
+// Choices — enum-like (all bare variants)
+(choice ConservationStatus least_concern vulnerable endangered critical extinct)
+(choice Habitat forest wetland grassland coastal urban)
 
-(enum Habitat forest wetland grassland coastal urban)
-
-(type ScientificName
+// Shapes — structured types
+(shape ScientificName
   common: string
   scientific: string)
 
-(type Location
+(shape Location
   latitude: float
   longitude: float
   altitude: float?)
 
-(type User [Timestamped]
+(shape User [Timestamped]
   id: UserId
   username: string
   email: Email
   observations: [Observation])
 
-(type Bird [Timestamped]
+(shape Bird [Timestamped]
   id: BirdId
   name: ScientificName
   status: ConservationStatus
@@ -530,7 +529,7 @@ The agent reads the finalized IR alongside the relevant target profile(s) and ge
   observations: [Observation]
   tags: [Tag])
 
-(type Observation [Timestamped]
+(shape Observation [Timestamped]
   id: UUID
   timestamp: datetime
   location: Location?
@@ -540,12 +539,13 @@ The agent reads the finalized IR alongside the relevant target profile(s) and ge
   bird: Bird
   observer: User)
 
-(type Tag
+(shape Tag
   id: UUID
   label: string
   birds: [Bird])
 
-(union MediaAttachment
+// Choices — union-like (fielded variants)
+(choice MediaAttachment
   (common
     url: string
     caption: string?)
@@ -558,6 +558,19 @@ The agent reads the finalized IR alongside the relevant target profile(s) and ge
 ```
 
 ---
+
+## Changes from v7
+
+| Area | v7 | v8 | Rationale |
+|------|----|----|-----------|
+| **Concept count** | Five concepts (types, unions, enums, type aliases, mixins) | Three concepts (shapes, choices, mixins) | Fewer concepts = lower cognitive load. Enums and unions are both "one of N alternatives" — `choice` unifies them. Type aliases are unnecessary — unresolved names are atoms that targets resolve. |
+| **Types** | `(type Foo ...)` | `(shape Foo ...)` | "Shape" better reflects that the hub describes structure, not identity or behavior. |
+| **Enums + unions** | `(enum X a b c)` + `(union X ...)` — two separate concepts | `(choice X ...)` — unified | All-bare choices behave like enums; fielded choices behave like unions. No premature modeling decision needed. |
+| **Type aliases** | `(alias X Y)` | *(removed)* | Unresolved names are atoms. Target profiles map `BirdId`, `UserId`, `Email` directly — no hub-level alias needed. |
+| **Mixin composition** | Mixins cannot use other mixins | `(mixin A [B] ...)` — mixins can include other mixins | Enables layered field templates (e.g., `Auditable` includes `Timestamped`). |
+| **Plural forms** | `aliases`, `enums`, `types`, `unions`, `mixins` | `shapes`, `choices`, `mixins` | Matches the three-concept model. |
+| **IR keys** | `types`, `unions`, `enums`, `type_aliases`, `mixins` | `shapes`, `choices`, `mixins` | Cleaner IR reflecting fewer concepts. |
+| **Casing enforcement** | Validator warns on non-PascalCase/snake_case names | No casing enforcement | Naming conventions are documented guidance, not validator rules. Keeps validator focused on structural correctness. |
 
 ## Changes from v6
 

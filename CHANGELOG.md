@@ -6,6 +6,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Added
+- **Block comments** — `/* ... */` with nesting support. `/* outer /* inner */ still outer */` is valid. Unterminated block comments are a parse error (E000). Comment delimiters are stripped during lexing (not tokens); token count stays at 12.
+- **Namespace declaration** — `(namespace com.example.foo)` declares a logical package/module identity for the model. Optional, at most one per file, stored in `meta.namespace`. Generators use it as the default package when the satellite doesn't override via `globals.package`.
+- `namespace_form` production added to EBNF grammar
+- Parser: `_parse_namespace()` method, `namespace` keyword dispatch, duplicate detection
+- Validator: accepts optional `namespace` key in `meta` (E004 if present but not a non-empty string)
+
+## [8.0]
+
+### Changed
+- **BREAKING**: Concept count reduced from five to three — shapes (was types), choices (unifies enums + unions), mixins (now with composition). Type aliases removed.
+- **BREAKING**: `(type ...)` renamed to `(shape ...)`, `(types ...)` renamed to `(shapes ...)`
+- **BREAKING**: `(enum ...)` and `(union ...)` unified into `(choice ...)`, `(enums ...)` and `(unions ...)` unified into `(choices ...)`
+- **BREAKING**: `(alias ...)` and `(aliases ...)` removed — unresolved names are atoms; target profiles resolve them via `atoms:` section
+- **BREAKING**: IR keys changed: `types` → `shapes`, `unions`+`enums` → `choices`, `type_aliases` removed
+- **BREAKING**: Validator no longer enforces PascalCase/snake_case naming (W001, W002 warnings removed). Naming conventions are documented guidance only.
+- Parser (`forma_parser.py`) rewritten: new keyword dispatch (`shape`/`shapes`/`choice`/`choices`), removed `type`/`types`/`enum`/`enums`/`union`/`unions`/`alias`/`aliases`; mixin body parsing accepts optional `[mixin_ref ...]` bracket list for composition
+- Validator (`validate.py`) rewritten: registries renamed (`self.shapes`, `self.choices`), removed `_validate_enums`, `_validate_type_aliases`; added mixin composition validation with cycle detection; `_resolve_type` no longer warns on unknown names (atoms are valid)
+- Satellite examples updated: `types:` → `shapes:`, `enums:`+`unions:` → `choices:`, `type_aliases:` → `atoms:`
+- All documentation updated: `SPEC.md`, `SKILL.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `quick-reference.md`, `satellite-architecture.md`, `kotlin-profile.md`
+
+### Added
+- **Mixin composition** — `(mixin Auditable [Timestamped] ...)` allows mixins to include other mixins. Transitive expansion, cycle detection (E091), unknown mixin reference detection (E092).
+- **Atoms** — unresolved type names are valid "atoms" that target profiles map to concrete types. Replaces type aliases without requiring hub-level declarations.
+- **`choice` keyword** — unifies enums and unions. All-bare variants = enum-like, fielded variants = union-like.
+- `atoms:` section in satellite profiles (replaces `type_aliases:`)
+- "Changes from v7" section in spec
+
+### Removed
+- `(alias ...)` / `(aliases ...)` keywords and `type_aliases` IR key
+- `(enum ...)` / `(enums ...)` keywords and `enums` IR key (use `choice` instead)
+- `(type ...)` / `(types ...)` keywords (use `shape` instead)
+- `(union ...)` / `(unions ...)` keywords (use `choice` instead)
+- PascalCase/snake_case validation warnings (W001, W002)
+- `_PASCAL_RE`, `_SNAKE_RE` constants from validator
+- Alias-specific errors (E032, E020-E022)
+
 ## [7.0]
 
 ### Changed
