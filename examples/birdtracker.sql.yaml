@@ -28,7 +28,7 @@ type_mappings:
   date: DATE
   json: JSONB
 
-types:
+shapes:
   default: embedded_columns
   # embedded_columns → flattened with prefix: location_latitude, location_longitude
   # json_column      → stored as JSONB in a single column
@@ -43,11 +43,13 @@ types:
 
   overrides: {}
 
-enums:
+choices:
   default: native_enum
-  # native_enum → CREATE TYPE ... AS ENUM (...)
+  # native_enum → CREATE TYPE ... AS ENUM (...) — for all-bare choices
   # check       → VARCHAR + CHECK constraint
-  # lookup_table → separate table with FK reference
+  # jsonb_column → single JSONB column with discriminator — for fielded choices
+  # single_table → type column + nullable variant columns
+  # separate_tables → one table per variant with shared PK
 
   overrides:
     Habitat: check
@@ -55,18 +57,10 @@ enums:
     # which maps to a text array — native enums can't be array elements
     # in all PostgreSQL versions without casts.
 
-type_aliases:
+atoms:
   default: transparent
   # transparent → resolves to base type, no SQL-level distinction
   # domain     → CREATE DOMAIN Name AS Type (named type with optional constraints)
-
-  overrides: {}
-
-unions:
-  default: jsonb_column
-  # jsonb_column      → single JSONB column with discriminator field
-  # single_table      → type column + nullable variant columns
-  # separate_tables   → one table per variant with shared PK
 
   overrides: {}
 

@@ -1,42 +1,43 @@
-// BirdTracker — Example Data Model
-//
-// This file demonstrates all .forma syntax features:
-// - S-expression forms: (keyword name ...body...)
-// - Nullability with ?, structural primitives [T] and {K, V}
-// - Mixin inheritance with [MixinName] bracket lists
-// - Angle-bracket generics: tree<T>, Versioned<Bird>
-// - References as plain field types (targets infer cardinality)
+/*
+ * BirdTracker — Example Data Model
+ *
+ * This file demonstrates all .forma syntax features:
+ * - S-expression forms: (keyword name ...body...)
+ * - Nullability with ?, structural primitives [T] and {K, V}
+ * - Mixin composition with [MixinName] bracket lists
+ * - Angle-bracket generics: tree<T>, Versioned<Bird>
+ * - References as plain field types (targets infer cardinality)
+ * - Atoms: BirdId, UserId, Email resolve in target profiles
+ */
 
-(model BirdTracker v7.0 "Bird observation tracking system")
+(namespace com.example.birdtracker)
 
-(alias BirdId UUID)
-(alias UserId UUID)
-(alias Email string)
+(model BirdTracker v8.0 "Bird observation tracking system")
 
 (mixin Timestamped
   created_at: datetime
   updated_at: datetime?)
 
-(enum ConservationStatus least_concern vulnerable endangered critical extinct)
+(choice ConservationStatus least_concern vulnerable endangered critical extinct)
 
-(enum Habitat forest wetland grassland coastal urban)
+(choice Habitat forest wetland grassland coastal urban)
 
-(type ScientificName
+(shape ScientificName
   common: string
   scientific: string)
 
-(type Location
+(shape Location
   latitude: float
   longitude: float
   altitude: float?)
 
-(type User [Timestamped]
+(shape User [Timestamped]
   id: UserId
   username: string
   email: Email
   observations: [Observation])
 
-(type Bird [Timestamped]
+(shape Bird [Timestamped]
   id: BirdId
   name: ScientificName
   status: ConservationStatus
@@ -48,7 +49,7 @@
   observations: [Observation]
   tags: [Tag])
 
-(type Observation [Timestamped]
+(shape Observation [Timestamped]
   id: UUID
   timestamp: datetime
   location: Location?
@@ -58,12 +59,12 @@
   bird: Bird
   observer: User)
 
-(type Tag
+(shape Tag
   id: UUID
   label: string
   birds: [Bird])
 
-(union MediaAttachment
+(choice MediaAttachment
   (common
     url: string
     caption: string?)

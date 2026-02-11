@@ -17,9 +17,9 @@ target: kotlin
 # Global generation defaults
 # ──────────────────────────────────────
 globals:
-  package: com.example.birdtracker.model
-  
-  immutability: full                    
+  package: com.example.birdtracker.model   # overrides hub (namespace ...) if set
+
+  immutability: full
   # full   → val-only properties, immutable collections, copy-on-write
   # partial → val properties, stdlib mutable collections
   # none    → var properties, mutable collections
@@ -29,10 +29,10 @@ globals:
   # lenient → all fields nullable (e.g., for partial/patch DTOs)
 
   collections:
-    library: kotlinx-immutable          
+    library: kotlinx-immutable
     # kotlinx-immutable → kotlinx.collections.immutable (PersistentList, PersistentSet, PersistentMap)
     # stdlib            → kotlin.collections (List, Set, Map — already read-only interfaces)
-    
+
     # How structural primitives from core spec map to Kotlin types:
     collection: PersistentList          # [T] (= coll<T>) → PersistentList<T>
     association: PersistentMap          # {K, V} (= dict<K, V>) → PersistentMap<K, V>
@@ -61,12 +61,14 @@ type_mappings:
   json: kotlinx.serialization.json.JsonElement
 
 # ──────────────────────────────────────
-# Enum directives
+# Choice directives
 # ──────────────────────────────────────
-enums:
+choices:
   default: enum_class
-  # enum_class    → standard enum class
-  # bitmask       → Int-backed bitmask for combinable flags
+  # enum_class       → standard enum class (for all-bare choices)
+  # bitmask          → Int-backed bitmask for combinable flags
+  # sealed_class     → sealed class with data class variants (for fielded choices)
+  # sealed_interface → sealed interface (for multi-inheritance)
 
   overrides:
     Habitat: bitmask
@@ -91,24 +93,9 @@ enums:
     # The core spec's [Habitat] field collapses to a single HabitatFlags
 
 # ──────────────────────────────────────
-# Union directives
+# Shape directives
 # ──────────────────────────────────────
-unions:
-  default: sealed_class
-  # sealed_class   → sealed class with data class variants (idiomatic Kotlin)
-  # sealed_interface → sealed interface with data class variants (more flexible for multi-inheritance)
-  
-  # Common fields from the union become abstract properties on the sealed type.
-  # Variant-specific fields become properties on each data class variant.
-  
-  overrides: {}
-  # Per-union overrides if needed:
-  # MediaAttachment: sealed_interface
-
-# ──────────────────────────────────────
-# Type directives
-# ──────────────────────────────────────
-types:
+shapes:
   default:
     style: data_class
     # data_class → data class (equals, hashCode, copy, destructuring)
@@ -117,11 +104,11 @@ types:
     # interface  → interface (for multi-platform expect/actual)
 
     implements: []
-    # Interfaces all generated types should implement
+    # Interfaces all generated shapes should implement
     # e.g., [Identifiable, Timestamped]
 
     annotations: []
-    # Annotations applied to all types
+    # Annotations applied to all shapes
     # e.g., ["@Serializable"]
 
   overrides:
@@ -133,14 +120,29 @@ types:
       annotations: ["@Serializable"]
 
 # ──────────────────────────────────────
+# Atom directives
+# ──────────────────────────────────────
+atoms:
+  default: typealias
+  # typealias   → Kotlin typealias (transparent, no runtime overhead)
+  # value_class → @JvmInline value class (type-safe wrapper, zero allocation)
+  # class       → regular class wrapper
+
+  overrides:
+    BirdId: value_class
+    UserId: value_class
+    # BirdId and UserId become @JvmInline value class wrappers for UUID.
+    # Email uses the default typealias.
+
+# ──────────────────────────────────────
 # Interfaces to generate
 # ──────────────────────────────────────
 interfaces:
   Identifiable:
     properties:
       id: UUID
-    # Types implementing this get `: Identifiable` in their declaration.
-    # The generator verifies the type has a matching `id` field.
+    # Shapes implementing this get `: Identifiable` in their declaration.
+    # The generator verifies the shape has a matching `id` field.
 ```
 
 ---
@@ -157,7 +159,7 @@ import kotlinx.datetime.Instant
 import kotlinx.serialization.Serializable
 import java.util.UUID
 
-// From types (value types — no key designation in satellite)
+// From shapes (value shapes — no key designation in satellite)
 data class ScientificName(
     val common: String,
     val scientific: String,
@@ -169,7 +171,7 @@ data class Location(
     val altitude: Double?,
 )
 
-// From unions → sealed class with common fields as abstract properties
+// From choices (fielded) → sealed class with common fields as abstract properties
 @Serializable
 sealed class MediaAttachment {
     abstract val url: String
@@ -190,7 +192,7 @@ sealed class MediaAttachment {
     ) : MediaAttachment()
 }
 
-// From enums (bitmask override for Habitat)
+// From choices (all-bare, bitmask override for Habitat)
 @JvmInline
 value class HabitatFlags(val bits: Int) {
     operator fun contains(flag: HabitatFlags) = bits and flag.bits == flag.bits
@@ -208,7 +210,7 @@ value class HabitatFlags(val bits: Int) {
     }
 }
 
-// Standard enum
+// From choices (all-bare) → standard enum
 enum class ConservationStatus {
     LEAST_CONCERN,
     VULNERABLE,
@@ -217,7 +219,7 @@ enum class ConservationStatus {
     EXTINCT,
 }
 
-// From types (identity types — satellite designates key + persistence)
+// From shapes (identity shapes — satellite designates key + persistence)
 @Serializable
 data class Bird(
     val id: UUID,
@@ -231,7 +233,7 @@ data class Bird(
     val updatedAt: Instant?,             // from Timestamped mixin
 ) : Identifiable
 
-// Type with union-typed field
+// Shape with choice-typed field
 @Serializable
 data class Observation(
     val id: UUID,
@@ -239,7 +241,7 @@ data class Observation(
     val location: Location?,
     val notes: String?,
     val count: Int = 1,
-    val media: MediaAttachment?,         // union type — Photo or Audio
+    val media: MediaAttachment?,         // choice type — Photo or Audio
     val createdAt: Instant,              // from Timestamped mixin
     val updatedAt: Instant?,             // from Timestamped mixin
 )
@@ -249,20 +251,20 @@ data class Observation(
 
 ## Design Notes
 
-**Why a separate file?** The core spec says `Bird` has a field `habitats: [Habitat]`. That's structurally correct — it's a collection of habitat values. But in Kotlin, the *optimal* representation might be a bitmask integer, or a `PersistentSet<Habitat>`, or an `EnumSet<Habitat>`. That's a generation concern, not a structural one. The `types:` section in the satellite profile controls how each type is represented — value types like `Location` and identity types like `Bird` can have different strategies via the `overrides` map.
+**Why a separate file?** The core spec says `Bird` has a field `habitats: [Habitat]`. That's structurally correct — it's a collection of habitat values. But in Kotlin, the *optimal* representation might be a bitmask integer, or a `PersistentSet<Habitat>`, or an `EnumSet<Habitat>`. That's a generation concern, not a structural one. The `shapes:` section in the satellite profile controls how each shape is represented — value shapes like `Location` and identity shapes like `Bird` can have different strategies via the `overrides` map.
 
-**Bitmask generation**: When an enum is marked `bitmask`, the generator produces a `@JvmInline value class` wrapping an `Int`. This gives type safety (can't accidentally pass a raw `Int` where `HabitatFlags` is expected) with zero runtime allocation overhead — the JVM sees a plain `int` at the call site. Any `[E]` field referencing a bitmask enum collapses to a single value class field. The generator also produces `contains`, `plus`, `minus` operators and `NONE`/`ALL` constants.
+**Bitmask generation**: When a choice is marked `bitmask`, the generator produces a `@JvmInline value class` wrapping an `Int`. This gives type safety (can't accidentally pass a raw `Int` where `HabitatFlags` is expected) with zero runtime allocation overhead — the JVM sees a plain `int` at the call site. Any `[E]` field referencing a bitmask choice collapses to a single value class field. The generator also produces `contains`, `plus`, `minus` operators and `NONE`/`ALL` constants.
 
-**Union → sealed class**: Unions are a natural fit for Kotlin's sealed class hierarchies. Common fields become `abstract` properties on the sealed parent, ensuring the compiler enforces them on every variant. `when` expressions over a sealed class are exhaustive — the compiler catches missing variants. The `sealed_interface` option is available when variants need to implement multiple interfaces.
+**Choice → sealed class**: Fielded choices are a natural fit for Kotlin's sealed class hierarchies. Common fields become `abstract` properties on the sealed parent, ensuring the compiler enforces them on every variant. `when` expressions over a sealed class are exhaustive — the compiler catches missing variants. The `sealed_interface` option is available when variants need to implement multiple interfaces.
 
 **Immutability strategy**: `full` immutability means the generated code is safe to share across coroutines without copying — `PersistentList` from kotlinx.collections.immutable gives structural sharing out of the box. The `partial` option uses Kotlin's read-only `List` interface (which doesn't guarantee the underlying implementation is immutable).
 
-**Unified `types:` section**: The satellite profile uses a single `types:` section to control all types — both value types (like `Location`) and identity types (like `Bird`). Per-type overrides select annotations, interfaces, and style. The satellite doesn't need separate sections because satellite-level signals (constraints, persistence strategies, key designations) already distinguish type roles.
+**Unified `shapes:` section**: The satellite profile uses a single `shapes:` section to control all shapes — both value shapes (like `Location`) and identity shapes (like `Bird`). Per-shape overrides select annotations, interfaces, and style. The satellite doesn't need separate sections because satellite-level signals (constraints, persistence strategies, key designations) already distinguish shape roles.
 
 **Profile inheritance**: A project might have a base Kotlin profile and override it per module:
 
 ```
 model.kotlin.yaml           ← base: kotlinx-immutable, full immutability
 model.kotlin.api.yaml       ← API layer: adds @Serializable, lenient nullability for DTOs
-model.kotlin.domain.yaml    ← Domain layer: sealed classes for enums, stricter types
+model.kotlin.domain.yaml    ← Domain layer: sealed classes for choices, stricter types
 ```

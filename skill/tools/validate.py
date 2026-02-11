@@ -4,9 +4,9 @@
 Validates a Forma hub model (.forma) against the spec:
   - Valid structure (.forma DSL)
   - Required sections and fields
-  - Type references resolve
-  - Naming conventions
+  - Type references resolve (shapes, choices, or atoms)
   - Generic mixin arity and type substitution
+  - Mixin composition (transitive expansion, cycle detection)
 
 Usage:
     python skill/tools/validate.py <model.forma>
@@ -27,19 +27,12 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 
 VALID_TOP_LEVEL_KEYS = frozenset([
-    "meta", "types", "unions", "enums",
-    "type_aliases", "mixins",
+    "meta", "shapes", "choices", "mixins",
 ])
 
-VALID_TYPE_SUB_KEYS = frozenset(["use", "fields"])
+VALID_SHAPE_SUB_KEYS = frozenset(["use", "fields"])
 
-VALID_MIXIN_SUB_KEYS = frozenset(["type_params", "fields"])
-
-# Regex: PascalCase — starts with uppercase, at least two chars, only letters/digits
-_PASCAL_RE = re.compile(r"^[A-Z][a-zA-Z0-9]*$")
-
-# Regex: snake_case — lowercase + digits + underscores, no leading/trailing _
-_SNAKE_RE = re.compile(r"^[a-z][a-z0-9]*(_[a-z0-9]+)*$")
+VALID_MIXIN_SUB_KEYS = frozenset(["type_params", "use", "fields"])
 
 # Regex: named wrapper — name<args>
 _WRAPPER_RE = re.compile(r"^(\w+)<(.+)>$")
@@ -77,10 +70,8 @@ class ModelValidator:
         self.warnings: list[Diagnostic] = []
 
         # Type registry — populated by _build_type_registry
-        self.types: set[str] = set()
-        self.unions: set[str] = set()
-        self.enums: set[str] = set()
-        self.aliases: dict[str, str] = {}  # name → target type
+        self.shapes: set[str] = set()
+        self.choices: set[str] = set()
         self.mixins: set[str] = set()
 
         # Mixin field maps (mixin_name → {field_name: type_str})
@@ -88,6 +79,9 @@ class ModelValidator:
 
         # Mixin type params (mixin_name → [param_names])
         self.mixin_type_params: dict[str, list[str]] = {}
+
+        # Mixin composition (mixin_name → [mixin_ref_strings])
+        self.mixin_use: dict[str, list[str]] = {}
 
     # -- public API ---------------------------------------------------------
 
@@ -97,11 +91,9 @@ class ModelValidator:
         self._check_duplicate_type_names()
         self._validate_top_level_keys()
         self._validate_meta()
-        self._validate_enums()
-        self._validate_type_aliases()
-        self._validate_unions()
         self._validate_mixins()
-        self._validate_types()
+        self._validate_choices()
+        self._validate_shapes()
         return self.errors, self.warnings
 
     # -- helpers ------------------------------------------------------------
@@ -113,7 +105,7 @@ class ModelValidator:
         self.warnings.append(Diagnostic(code, "warning", message, location))
 
     def _all_type_names(self) -> set[str]:
-        return self.types | self.unions | self.enums | set(self.aliases) | self.mixins
+        return self.shapes | self.choices | self.mixins
 
     # -- type resolution ----------------------------------------------------
 
@@ -127,6 +119,7 @@ class ModelValidator:
           - Named wrappers: `tree<T>`
           - Nullable suffix: any of the above followed by `?`
 
+        Unknown names are valid atoms — no warnings emitted.
         Emits errors/warnings as side effects.
         """
         if not isinstance(raw, str):
@@ -175,16 +168,16 @@ class ModelValidator:
                 self._resolve_type(arg, location)
             return True
 
-        # Check user-defined types
-        if type_str in self.types or type_str in self.unions or type_str in self.enums or type_str in self.aliases:
+        # Check user-defined shapes and choices
+        if type_str in self.shapes or type_str in self.choices:
             return True
 
         # Mixin used as field type
         if type_str in self.mixins:
-            self._error("E042", f"mixin \"{type_str}\" cannot be used as a field type (use a type instead)", location)
+            self._error("E042", f"mixin \"{type_str}\" cannot be used as a field type (use a shape instead)", location)
             return False
 
-        # Type not declared in this model — may be provided by a target profile
+        # Atom — any unresolved name is valid
         return True
 
     # -- registry -----------------------------------------------------------
@@ -193,30 +186,25 @@ class ModelValidator:
         """Collect all declared type names from each section."""
         data = self.data
 
-        for name in _section_keys(data, "types"):
-            self.types.add(name)
+        for name in _section_keys(data, "shapes"):
+            self.shapes.add(name)
 
-        for name in _section_keys(data, "unions"):
-            self.unions.add(name)
-
-        for name in _section_keys(data, "enums"):
-            self.enums.add(name)
-
-        if isinstance(data.get("type_aliases"), dict):
-            for name, target in data["type_aliases"].items():
-                self.aliases[name] = str(target) if target is not None else ""
+        for name in _section_keys(data, "choices"):
+            self.choices.add(name)
 
         for name in _section_keys(data, "mixins"):
             self.mixins.add(name)
             section = data["mixins"][name]
             if isinstance(section, dict):
-                # New IR format: {"type_params": [...], "fields": {...}}
                 fields = section.get("fields")
                 if isinstance(fields, dict):
                     self.mixin_fields[name] = fields
                     type_params = section.get("type_params")
                     if isinstance(type_params, list):
                         self.mixin_type_params[name] = type_params
+                    use_list = section.get("use")
+                    if isinstance(use_list, list):
+                        self.mixin_use[name] = use_list
 
     # -- duplicate / collision checks ---------------------------------------
 
@@ -224,10 +212,8 @@ class ModelValidator:
         """E100: same name in two type-defining sections."""
         seen: dict[str, str] = {}  # name → section
         sections = [
-            ("types", self.types),
-            ("unions", self.unions),
-            ("enums", self.enums),
-            ("type_aliases", set(self.aliases)),
+            ("shapes", self.shapes),
+            ("choices", self.choices),
         ]
         for section_name, names in sections:
             for name in names:
@@ -270,112 +256,59 @@ class ModelValidator:
         if "description" not in meta:
             self._warn("W013", "\"meta.description\" is missing", "meta")
 
-    # -- enums --------------------------------------------------------------
+        # Optional namespace — validate type if present
+        ns = meta.get("namespace")
+        if ns is not None and (not isinstance(ns, str) or len(ns) == 0):
+            self._error("E004", "\"meta.namespace\" must be a non-empty string", "meta.namespace")
 
-    def _validate_enums(self):
-        section = self.data.get("enums")
+    # -- choices ------------------------------------------------------------
+
+    def _validate_choices(self):
+        section = self.data.get("choices")
         if section is None:
             return
         if not isinstance(section, dict):
-            self._error("E011", "\"enums\" must be a mapping", "enums")
+            self._error("E011", "\"choices\" must be a mapping", "choices")
             return
         if len(section) == 0:
-            self._warn("W017", "\"enums\" section is empty", "enums")
-            return
-
-        for name, values in section.items():
-            loc = f"enums.{name}"
-            self._check_pascal_case(name, loc)
-
-            if not isinstance(values, list):
-                self._error("E020", f"enum \"{name}\" must be a list of values", loc)
-                continue
-            if len(values) == 0:
-                self._error("E021", f"enum \"{name}\" has zero values", loc)
-                continue
-
-            seen_vals: set[str] = set()
-            for v in values:
-                v_str = str(v)
-                self._check_snake_case(v_str, f"{loc}.{v_str}")
-                if v_str in seen_vals:
-                    self._error("E022", f"duplicate enum value \"{v_str}\" in \"{name}\"", f"{loc}.{v_str}")
-                seen_vals.add(v_str)
-
-    # -- type aliases -------------------------------------------------------
-
-    def _validate_type_aliases(self):
-        section = self.data.get("type_aliases")
-        if section is None:
-            return
-        if not isinstance(section, dict):
-            self._error("E011", "\"type_aliases\" must be a mapping", "type_aliases")
-            return
-        if len(section) == 0:
-            self._warn("W017", "\"type_aliases\" section is empty", "type_aliases")
-            return
-
-        for name, target in section.items():
-            loc = f"type_aliases.{name}"
-            self._check_pascal_case(name, loc)
-
-            target_str = str(target) if target is not None else ""
-
-            if target_str in self.aliases:
-                self._error("E032", f"alias \"{name}\" points to another alias \"{target_str}\" (aliases cannot chain)", loc)
-
-    # -- unions -------------------------------------------------------------
-
-    def _validate_unions(self):
-        section = self.data.get("unions")
-        if section is None:
-            return
-        if not isinstance(section, dict):
-            self._error("E011", "\"unions\" must be a mapping", "unions")
-            return
-        if len(section) == 0:
-            self._warn("W017", "\"unions\" section is empty", "unions")
+            self._warn("W017", "\"choices\" section is empty", "choices")
             return
 
         for name, body in section.items():
-            loc = f"unions.{name}"
-            self._check_pascal_case(name, loc)
+            loc = f"choices.{name}"
 
             if not isinstance(body, dict):
-                self._error("E011", f"union \"{name}\" must be a mapping", loc)
+                self._error("E011", f"choice \"{name}\" must be a mapping", loc)
                 continue
 
             # Separate common from variants
             common = body.get("common")
             if common is not None and not isinstance(common, dict):
-                self._error("E053", f"\"common\" block in union \"{name}\" must be a mapping", f"{loc}.common")
+                self._error("E053", f"\"common\" block in choice \"{name}\" must be a mapping", f"{loc}.common")
 
             variants = {k: v for k, v in body.items() if k != "common"}
             if len(variants) < 2:
-                self._error("E050", f"union \"{name}\" must have at least 2 variants (has {len(variants)})", loc)
+                self._error("E050", f"choice \"{name}\" must have at least 2 variants (has {len(variants)})", loc)
 
             # Validate common fields
             if isinstance(common, dict):
                 for field_name, field_type in common.items():
                     field_loc = f"{loc}.common.{field_name}"
-                    self._check_snake_case(str(field_name), field_loc)
                     if isinstance(field_type, str):
                         self._resolve_type(field_type, field_loc)
 
             # Validate variant fields
             for vname, vfields in variants.items():
                 vloc = f"{loc}.{vname}"
-                self._check_pascal_case(vname, vloc)
 
                 if vfields is None:
                     continue
                 if not isinstance(vfields, dict):
-                    self._error("E051", f"variant \"{vname}\" in union \"{name}\" must be a mapping or empty", vloc)
+                    self._error("E051", f"variant \"{vname}\" in choice \"{name}\" must be a mapping or empty", vloc)
                     continue
 
                 for field_name, field_type in vfields.items():
                     field_loc = f"{vloc}.{field_name}"
-                    self._check_snake_case(str(field_name), field_loc)
                     if isinstance(field_type, str):
                         self._resolve_type(field_type, field_loc)
 
@@ -394,7 +327,6 @@ class ModelValidator:
 
         for name, body in section.items():
             loc = f"mixins.{name}"
-            self._check_pascal_case(name, loc)
 
             if not isinstance(body, dict):
                 self._error("E060", f"mixin \"{name}\" must have fields (got {type(body).__name__})", loc)
@@ -426,13 +358,43 @@ class ModelValidator:
                         else:
                             param_set.add(p)
 
+            # Validate use list (mixin composition)
+            use_list = body.get("use")
+            if use_list is not None:
+                if not isinstance(use_list, list):
+                    self._error("E092", f"\"use\" in mixin \"{name}\" must be a list", f"{loc}.use")
+                else:
+                    for mixin_ref in use_list:
+                        mixin_str = str(mixin_ref)
+                        mixin_name, type_args = self._parse_mixin_ref(mixin_str)
+                        if mixin_name not in self.mixins:
+                            self._error("E092", f"mixin \"{name}\" references unknown mixin \"{mixin_name}\"", f"{loc}.use")
+
+            # Check for circular composition
+            if self._detect_mixin_cycle(name, set(), []):
+                pass  # error already emitted by _detect_mixin_cycle
+
             for field_name, field_type in fields.items():
                 field_loc = f"{loc}.{field_name}"
-                self._check_snake_case(str(field_name), field_loc)
                 if isinstance(field_type, str):
                     # Skip resolution for type parameter names
                     if not self._type_uses_only_params(field_type, param_set):
                         self._resolve_type(field_type, field_loc)
+
+    def _detect_mixin_cycle(self, name: str, visiting: set[str], path: list[str]) -> bool:
+        """Detect circular mixin composition. Returns True if cycle found."""
+        if name in visiting:
+            cycle_path = " -> ".join(path + [name])
+            self._error("E091", f"circular mixin composition: {cycle_path}", f"mixins.{name}")
+            return True
+        if name not in self.mixin_use:
+            return False
+        visiting = visiting | {name}
+        for ref_str in self.mixin_use[name]:
+            ref_name, _ = self._parse_mixin_ref(ref_str)
+            if self._detect_mixin_cycle(ref_name, visiting, path + [name]):
+                return True
+        return False
 
     def _type_uses_only_params(self, type_str: str, params: set[str]) -> bool:
         """Check if a type string contains type parameters that should skip resolution.
@@ -461,7 +423,7 @@ class ModelValidator:
             return all(self._type_uses_only_params(a.strip(), params) for a in args)
         return False
 
-    # -- types --------------------------------------------------------------
+    # -- shapes -------------------------------------------------------------
 
     def _parse_mixin_ref(self, ref_str: str) -> tuple[str, list[str]]:
         """Parse a mixin reference string like 'Versioned<Bird>' into (name, [args]).
@@ -474,65 +436,82 @@ class ModelValidator:
             return name, args
         return ref_str, []
 
-    def _resolve_mixin_fields(self, mixin_name: str, type_args: list[str], loc: str) -> dict[str, str]:
+    def _resolve_mixin_fields(self, mixin_name: str, type_args: list[str], loc: str, visited: set[str] | None = None) -> dict[str, str]:
         """Resolve mixin fields by substituting type parameters with concrete types.
+        Handles transitive composition via 'use' lists.
         Returns the resolved field map."""
+        if visited is None:
+            visited = set()
+        if mixin_name in visited:
+            return {}  # cycle — already reported by _detect_mixin_cycle
+        visited = visited | {mixin_name}
+
         fields = self.mixin_fields.get(mixin_name, {})
         params = self.mixin_type_params.get(mixin_name, [])
 
-        if not params:
-            return dict(fields)
+        # Start with composed mixin fields
+        all_fields: dict[str, str] = {}
 
-        # Build substitution map
+        # Expand composed mixins first
+        use_list = self.mixin_use.get(mixin_name, [])
+        for ref_str in use_list:
+            ref_name, ref_args = self._parse_mixin_ref(ref_str)
+            if ref_name in self.mixin_fields:
+                composed_fields = self._resolve_mixin_fields(ref_name, ref_args, loc, visited)
+                all_fields.update(composed_fields)
+
+        # Build substitution map from own type params
         subst: dict[str, str] = {}
-        for i, param in enumerate(params):
-            if i < len(type_args):
-                subst[param] = type_args[i]
+        if params:
+            for i, param in enumerate(params):
+                if i < len(type_args):
+                    subst[param] = type_args[i]
 
-        # Substitute in field types
-        resolved: dict[str, str] = {}
+        # Add own fields (with substitution)
         for fname, ftype in fields.items():
-            resolved[fname] = _substitute_type_params(ftype, subst)
+            if subst:
+                all_fields[fname] = _substitute_type_params(ftype, subst)
+            else:
+                all_fields[fname] = ftype
 
-        return resolved
+        return all_fields
 
-    def _validate_types(self):
-        section = self.data.get("types")
+    def _validate_shapes(self):
+        section = self.data.get("shapes")
         if section is None:
             return
         if not isinstance(section, dict):
-            self._error("E011", "\"types\" must be a mapping", "types")
+            self._error("E011", "\"shapes\" must be a mapping", "shapes")
             return
         if len(section) == 0:
-            self._warn("W017", "\"types\" section is empty", "types")
+            self._warn("W017", "\"shapes\" section is empty", "shapes")
             return
 
         for name, body in section.items():
-            loc = f"types.{name}"
-            self._check_pascal_case(name, loc)
+            loc = f"shapes.{name}"
 
             if not isinstance(body, dict):
-                self._error("E011", f"type \"{name}\" must be a mapping", loc)
+                self._error("E011", f"shape \"{name}\" must be a mapping", loc)
                 continue
 
             # Check sub-keys
             for key in body:
-                if key not in VALID_TYPE_SUB_KEYS:
-                    self._error("E085", f"unknown key \"{key}\" in type \"{name}\"", f"{loc}.{key}")
+                if key not in VALID_SHAPE_SUB_KEYS:
+                    self._error("E085", f"unknown key \"{key}\" in shape \"{name}\"", f"{loc}.{key}")
 
             # Validate use (mixins)
             use_list = body.get("use")
             resolved_mixin_fields: dict[str, str] = {}  # field_name → source_mixin
             if use_list is not None:
                 if not isinstance(use_list, list):
-                    self._error("E083", f"\"use\" in type \"{name}\" must be a list", f"{loc}.use")
+                    self._error("E083", f"\"use\" in shape \"{name}\" must be a list", f"{loc}.use")
                 else:
                     for mixin_ref in use_list:
                         mixin_str = str(mixin_ref)
                         mixin_name, type_args = self._parse_mixin_ref(mixin_str)
 
                         if mixin_name not in self.mixins:
-                            self._error("E084", f"unknown mixin \"{mixin_name}\" in type \"{name}\"", f"{loc}.use")
+                            self._error("E084", f"unknown mixin \"{mixin_name}\" in shape \"{name}\"", f"{loc}.use")
                         else:
                             # Stage 1: check arity
                             expected_params = self.mixin_type_params.get(mixin_name, [])
@@ -550,7 +529,7 @@ class ModelValidator:
                             for arg in type_args:
                                 self._resolve_type(arg, f"{loc}.use")
 
-                            # Stage 2: resolve fields with substitution
+                            # Stage 2: resolve fields with substitution (including composition)
                             if mixin_name in self.mixin_fields:
                                 resolved_fields = self._resolve_mixin_fields(mixin_name, type_args, f"{loc}.use")
                                 for mf_name, mf_type in resolved_fields.items():
@@ -564,36 +543,25 @@ class ModelValidator:
             # Validate fields
             fields = body.get("fields")
             if fields is None:
-                self._error("E070", f"type \"{name}\" is missing \"fields\" section", loc)
+                self._error("E070", f"shape \"{name}\" is missing \"fields\" section", loc)
             elif not isinstance(fields, dict):
-                self._error("E011", f"\"fields\" in type \"{name}\" must be a mapping", f"{loc}.fields")
+                self._error("E011", f"\"fields\" in shape \"{name}\" must be a mapping", f"{loc}.fields")
             else:
                 if len(fields) == 0:
-                    self._error("E070", f"type \"{name}\" has no fields", f"{loc}.fields")
+                    self._error("E070", f"shape \"{name}\" has no fields", f"{loc}.fields")
 
                 for field_name, field_type in fields.items():
                     field_loc = f"{loc}.fields.{field_name}"
-                    self._check_snake_case(str(field_name), field_loc)
 
                     # Check mixin field conflict
                     if str(field_name) in resolved_mixin_fields:
-                        self._warn("W012", f"field \"{field_name}\" in type \"{name}\" shadows mixin field from \"{resolved_mixin_fields[str(field_name)]}\"", field_loc)
+                        self._warn("W012", f"field \"{field_name}\" in shape \"{name}\" shadows mixin field from \"{resolved_mixin_fields[str(field_name)]}\"", field_loc)
 
                     # Validate field type
                     if not isinstance(field_type, str):
                         self._error("E075", f"field type must be a string, got {type(field_type).__name__} ({field_type!r})", field_loc)
                     else:
                         self._resolve_type(field_type, field_loc)
-
-    # -- naming convention checks -------------------------------------------
-
-    def _check_pascal_case(self, name: str, loc: str):
-        if not _PASCAL_RE.match(name):
-            self._warn("W001", f"\"{name}\" is not PascalCase", loc)
-
-    def _check_snake_case(self, name: str, loc: str):
-        if not _SNAKE_RE.match(name):
-            self._warn("W002", f"\"{name}\" is not snake_case", loc)
 
 
 # ---------------------------------------------------------------------------

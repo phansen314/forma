@@ -16,13 +16,13 @@ A satellite document for the existing BirdTracker model showing your target's co
 - `type_mappings:` — how Forma primitives map to target types
 
 **Common optional sections:**
-- `types:` — representation strategy + per-type overrides (style, annotations, interfaces)
-- `enums:` — enum representation strategy + per-enum overrides
-- `unions:` — union representation strategy
+- `shapes:` — representation strategy + per-shape overrides (style, annotations, interfaces)
+- `choices:` — choice representation strategy + per-choice overrides
+- `atoms:` — how atoms are represented (transparent, branded, wrapped)
 - `relationships:` — FK naming, join strategies
 - `indexes:` — target-specific indexing (SQL profiles)
 - `interfaces:` — generated interfaces (typed language profiles)
-- `derived_types:` — DTOs derived from types (layer profiles)
+- `derived_types:` — DTOs derived from shapes (layer profiles)
 
 Use the existing examples as templates:
 - [`examples/birdtracker.kotlin.yaml`](examples/birdtracker.kotlin.yaml) — typed language profile
@@ -36,7 +36,7 @@ Documentation that agents read when generating code for your target.
 1. **Overview** — one paragraph explaining what the profile controls
 2. **Format** — fully annotated YAML showing every section with inline comments explaining each option
 3. **Generated Output Example** — complete output the agent would produce from the BirdTracker model
-4. **Design Notes** — rationale for key decisions (why this enum strategy, why this union representation, etc.)
+4. **Design Notes** — rationale for key decisions (why this choice strategy, why this atom representation, etc.)
 
 Use the existing references as templates:
 - [`skill/references/kotlin-profile.md`](skill/references/kotlin-profile.md)
@@ -52,7 +52,7 @@ Add your new files to the repo structure blocks in both files.
 - Header comment block: model name, "Target Profile" or "Validation Satellite", satellite reference
 - Match the comment style of existing examples (see `birdtracker.kotlin.yaml`)
 - Use inline comments to explain non-obvious choices
-- All type/field names must match `birdtracker.forma` exactly
+- All shape/field names must match `birdtracker.forma` exactly
 
 ### Reference docs
 - Markdown with fenced code blocks
@@ -70,7 +70,7 @@ Add your new files to the repo structure blocks in both files.
 1. Fork the repo
 2. Create a branch: `profile/{target}` (e.g., `profile/typescript`)
 3. Add your three files
-4. Verify all type/field references match `birdtracker.forma`
+4. Verify all shape/field references match `birdtracker.forma`
 5. Open a pull request with a brief description of key design decisions
 
 ## Other Contributions

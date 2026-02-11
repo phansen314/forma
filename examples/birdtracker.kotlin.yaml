@@ -28,7 +28,7 @@ type_mappings:
   date: kotlinx.datetime.LocalDate
   json: kotlinx.serialization.json.JsonElement
 
-types:
+shapes:
   default:
     style: data_class
     implements: []
@@ -40,19 +40,18 @@ types:
     Observation:
       annotations: ["@Serializable"]
 
-enums:
+choices:
   default: enum_class
+  # enum_class    → for all-bare choices (enum-like)
+  # sealed_class  → for fielded choices (union-like)
   overrides:
     Habitat: bitmask
 
-type_aliases:
+atoms:
   default: typealias
   overrides:
     BirdId: value_class
     UserId: value_class
-
-unions:
-  default: sealed_class
 
 interfaces:
   Identifiable:

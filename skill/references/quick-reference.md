@@ -1,12 +1,14 @@
 # Data Model Format — Quick Reference
 
-## Hub Formats
+## Hub Format
 
 `.forma` — S-expression DSL. Satellites are YAML.
 
-## Primitives
+## Primitives (Atoms)
 
 `string` `text` `int` `float` `bool` `datetime` `date` `UUID` `json`
+
+These are atoms — the hub doesn't define them. Target profiles map them to concrete types.
 
 ## Nullability
 
@@ -45,44 +47,32 @@ Constraints (`primary_key`, `unique`, `default`) are satellite concerns.
 ## `.forma` Syntax
 
 ```forma
-// Comments use double-slash
+// Line comments use double-slash
+/* Block comments use slash-star (nestable) */
+
+(namespace com.example.myapp)            // optional — logical package identity
 
 (model AppName v1.0 "Description")
 
-// Type aliases — semantic names for base types
-(alias UserId UUID)
-(alias Email string)
-
-// Mixins — shared field templates (optional type params in <>)
+// Mixins — shared field templates (optional type params, optional composition)
 (mixin Timestamped
   created_at: datetime
   updated_at: datetime?)
+
+(mixin Auditable [Timestamped]
+  created_by: UserId
+  updated_by: UserId?)
 
 (mixin Versioned<T>
   current: T
   history: [T]
   version: int)
 
-// Enums — fixed value sets (space-separated)
-(enum Status active archived deleted)
+// Choices — enum-like (all bare variants)
+(choice Status active archived deleted)
 
-// Types — structured types with optional mixin inheritance
-(type Location
-  latitude: float
-  longitude: float)
-
-(type User [Timestamped]
-  id: UserId
-  email: Email
-  location: Location?
-  posts: [Post])
-
-(type Bird [Versioned<Bird> Timestamped]
-  name: string
-  species: string)
-
-// Unions — discriminated sum types
-(union Payment
+// Choices — union-like (fielded variants)
+(choice Payment
   (common
     amount: float)
   (CreditCard
@@ -90,6 +80,21 @@ Constraints (`primary_key`, `unique`, `default`) are satellite concerns.
   (BankTransfer
     account: string)
   Cash)                        // fieldless variant (marker)
+
+// Shapes — structured types with optional mixin inheritance
+(shape Location
+  latitude: float
+  longitude: float)
+
+(shape User [Timestamped]
+  id: UserId
+  email: Email
+  location: Location?
+  posts: [Post])
+
+(shape Bird [Versioned<Bird> Timestamped]
+  name: string
+  species: string)
 ```
 
 ## Plural Forms
@@ -97,14 +102,6 @@ Constraints (`primary_key`, `unique`, `default`) are satellite concerns.
 Group multiple definitions in a single form. Same IR output as singular forms.
 
 ```forma
-(aliases
-  UserId UUID
-  Email string)
-
-(enums
-  (Status active archived deleted)
-  (Role admin editor viewer))
-
 (mixins
   (Timestamped
     created_at: datetime
@@ -114,19 +111,17 @@ Group multiple definitions in a single form. Same IR output as singular forms.
     history: [T]
     version: int))
 
-(types
+(choices
+  (Status active archived deleted)
+  (Role admin editor viewer))
+
+(shapes
   (Location
     latitude: float
     longitude: float)
   (User [Timestamped]
     id: UserId
     email: Email))
-
-(unions
-  (Payment
-    (common amount: float)
-    (CreditCard number: string)
-    Cash))
 ```
 
 Singular and plural forms can be mixed freely.

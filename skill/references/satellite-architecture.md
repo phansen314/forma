@@ -5,7 +5,7 @@
 The data model system uses a hub-and-spoke document architecture. The hub (`model.forma`) describes what the data *is* — pure shape. Satellite documents describe how the data is *used*, *validated*, or *represented* in specific contexts.
 
 ```
-model.forma               ← Hub: structure, types, references (.forma recommended)
+model.forma               ← Hub: structure, shapes, references (.forma recommended)
 ├── model.validate.yaml   ← Spoke: validation rules
 ├── model.kotlin.yaml     ← Spoke: Kotlin generation profile
 ├── model.typescript.yaml ← Spoke: TypeScript generation profile
@@ -17,7 +17,7 @@ Satellites are always `.yaml`.
 
 ## Core Rules
 
-1. **Satellites reference the hub by name.** They use type names, field names, and enum names from the hub. They never redefine structural elements.
+1. **Satellites reference the hub by name.** They use shape names, field names, and choice names from the hub. They never redefine structural elements.
 
 2. **Satellites are independently optional.** The hub is self-contained. Any satellite can be absent without invalidating the model. Code generation without a target profile uses defaults.
 
@@ -25,7 +25,9 @@ Satellites are always `.yaml`.
 
 4. **The hub never grows for satellite concerns.** If a feature is target-specific, validation-specific, or deployment-specific, it goes in a satellite. The hub stays small.
 
-5. **Constraints belong in satellites.** Primary keys, unique constraints, default values, and relationship cardinality details are satellite concerns — they describe how data is *stored* or *used*, not what it *is*.
+5. **Hub namespace serves as default package.** If the hub declares `(namespace com.example.foo)`, generators use it as the default package/module. Satellites can override via `globals.package`.
+
+6. **Constraints belong in satellites.** Primary keys, unique constraints, default values, and relationship cardinality details are satellite concerns — they describe how data is *stored* or *used*, not what it *is*.
 
 ## Satellite Categories
 
@@ -37,20 +39,19 @@ Control how the hub maps to a specific language or persistence layer.
 
 | Section | Purpose | Example |
 |---|---|---|
-| `globals` | Package, immutability, serialization | `package: com.example.model` |
+| `globals` | Package, immutability, serialization | `package: com.example.model` (overrides hub namespace) |
 | `type_mappings` | Primitive → target type | `UUID: java.util.UUID` |
-| `type_aliases` | Alias representation strategy | `default: value_class` |
+| `atoms` | Atom representation strategy | `BirdId: value_class` |
 | `collection_wrappers` | `collection:` and `association:` keys for mapping `[T]` and `{K, V}`; named wrappers: `tree<T>` | `collection: PersistentList` |
-| `types` | Type representation + identity/constraints | `User: { primary_key: id, unique: [email] }` |
-| `unions` | Union representation | `default: sealed_class` |
-| `enums` | Enum strategy + per-enum overrides | `Habitat: bitmask` |
-| `derived_types` | DTOs derived from types | `BirdCreate: { from: Bird, omit: [id] }` |
+| `shapes` | Shape representation + identity/constraints | `User: { primary_key: id, unique: [email] }` |
+| `choices` | Choice representation | `default: enum_class` |
+| `derived_types` | DTOs derived from shapes | `BirdCreate: { from: Bird, omit: [id] }` |
 | `relationships` | FK naming, join table strategy | `fk_pattern: "{type}_id"` |
-| `interfaces` | Generated interfaces types can implement | `Identifiable: { properties: { id: UUID } }` |
+| `interfaces` | Generated interfaces shapes can implement | `Identifiable: { properties: { id: UUID } }` |
 
 ### Validation Profiles (`model.validate.yaml`)
 
-Define behavioral rules that reference the hub's types.
+Define behavioral rules that reference the hub's shapes.
 
 ```yaml
 validations:

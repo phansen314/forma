@@ -1,17 +1,11 @@
 // Wingspan — Board Game Data Model
 
+(namespace com.example.wingspan)
+
 (model wingspan v1.0 "core data shape for modelling wingspan game components")
 
-// Type aliases
-(aliases
-  BirdId int
-  BonusId int
-  GoalId int
-  PlayerId int
-  Round int)
-
-// Enums
-(enums
+// Choices (enum-like)
+(choices
   (Color white brown pink teal yellow)
   (Expansion asia european oceania core swift)
   (Nest bowl cavity ground platform wild)
@@ -30,8 +24,8 @@
     rodentologist viticulturalist wetland_scientist wildlife_gardener
     caprimulgiform_specialist small_clutch_specialist endangered_species_protector))
 
-// Unions
-(unions
+// Choices (union-like)
+(choices
   (DiceFace
     InvertebrateFace
     InvertebrateSeedFace
@@ -50,8 +44,8 @@
       type: CostType
       costs: [BirdCost])))
 
-// Value types
-(types
+// Value shapes
+(shapes
   (BirdName
     common: string
     scientific: string)
@@ -68,8 +62,8 @@
   (ActionsTaken
     actions: [Action]))
 
-// Card and game-state types
-(types
+// Card and game-state shapes
+(shapes
   (BirdState
     id: BirdId
     tucked_count: int

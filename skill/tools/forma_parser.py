@@ -6,24 +6,22 @@ Parses .forma files into an IR dict that the ModelValidator can validate.
 Grammar (EBNF):
 
     file           = { comment | form } EOF
-    form           = "(" ( model_form | alias_form | aliases_form
+    form           = "(" ( namespace_form | model_form
                          | mixin_form | mixins_form
-                         | enum_form | enums_form
-                         | type_form | types_form
-                         | union_form | unions_form ) ")"
+                         | choice_form | choices_form
+                         | shape_form | shapes_form ) ")"
 
+    namespace_form = "namespace" IDENT
     model_form     = "model" IDENT version [ STRING ]
-    version        = IDENT                          // e.g. v7.0
-    alias_form     = "alias" IDENT IDENT
-    aliases_form   = "aliases" { IDENT IDENT }
-    mixin_form     = "mixin" IDENT [ "<" IDENT { "," IDENT } ">" ] { field }
-    mixins_form    = "mixins" { "(" IDENT [ "<" IDENT { "," IDENT } ">" ] { field } ")" }
-    enum_form      = "enum" IDENT { IDENT }
-    enums_form     = "enums" { "(" IDENT { IDENT } ")" }
-    type_form      = "type" IDENT [ "[" mixin_ref { mixin_ref } "]" ] { field }
-    types_form     = "types" { "(" IDENT [ "[" mixin_ref { mixin_ref } "]" ] { field } ")" }
-    union_form     = "union" IDENT { common_form | variant }
-    unions_form    = "unions" { "(" IDENT { common_form | variant } ")" }
+    version        = IDENT                          // e.g. v8.0
+    mixin_form     = "mixin" IDENT [ "<" IDENT { "," IDENT } ">" ]
+                     [ "[" mixin_ref { mixin_ref } "]" ] { field }
+    mixins_form    = "mixins" { "(" IDENT [ "<" IDENT { "," IDENT } ">" ]
+                     [ "[" mixin_ref { mixin_ref } "]" ] { field } ")" }
+    choice_form    = "choice" IDENT { common_form | variant }
+    choices_form   = "choices" { "(" IDENT { common_form | variant } ")" }
+    shape_form     = "shape" IDENT [ "[" mixin_ref { mixin_ref } "]" ] { field }
+    shapes_form    = "shapes" { "(" IDENT [ "[" mixin_ref { mixin_ref } "]" ] { field } ")" }
     common_form    = "(" "common" { field } ")"
     variant        = IDENT | "(" IDENT { field } ")"
 
@@ -35,6 +33,7 @@ Grammar (EBNF):
                    | "{" type_expr "," type_expr "}"
 
     comment        = "//" ... EOL
+                   | "/*" ... "*/"          // nestable
     STRING         = '"' ... '"'
     IDENT          = letter { letter | digit | "_" | "." }
 
@@ -42,7 +41,7 @@ Usage:
     from forma_parser import parse_forma
 
     ir = parse_forma(source_text)
-    # ir is a dict with keys: meta, types, unions, enums, type_aliases, mixins
+    # ir is a dict with keys: meta, shapes, choices, mixins
 """
 
 from __future__ import annotations
@@ -121,12 +120,32 @@ def _lex(source: str) -> list[Token]:
             col += 1
             continue
 
-        # Line comment
-        if ch == "/" and i + 1 < len(source) and source[i + 1] == "/":
-            # Skip to end of line
-            while i < len(source) and source[i] != "\n":
-                i += 1
-            continue
+        # Comments
+        if ch == "/" and i + 1 < len(source):
+            next_ch = source[i + 1]
+            # Line comment: // ... EOL
+            if next_ch == "/":
+                while i < len(source) and source[i] != "\n":
+                    i += 1
+                continue
+            # Block comment: /* ... */ (nestable)
+            if next_ch == "*":
+                start_line = line
+                start_col = col
+                i += 2; col += 2
+                depth = 1
+                while i < len(source) and depth > 0:
+                    if source[i] == "/" and i + 1 < len(source) and source[i + 1] == "*":
+                        depth += 1; i += 2; col += 2
+                    elif source[i] == "*" and i + 1 < len(source) and source[i + 1] == "/":
+                        depth -= 1; i += 2; col += 2
+                    elif source[i] == "\n":
+                        i += 1; line += 1; col = 1
+                    else:
+                        i += 1; col += 1
+                if depth > 0:
+                    raise LexError("unterminated block comment", start_line, start_col)
+                continue
 
         # String literal
         if ch == '"':
@@ -222,11 +241,10 @@ class _Parser:
         self.pos = 0
 
         # IR accumulators
+        self.namespace: str | None = None
         self.meta: dict[str, str] = {}
-        self.types: dict[str, dict] = {}
-        self.unions: dict[str, dict] = {}
-        self.enums: dict[str, list[str]] = {}
-        self.type_aliases: dict[str, str] = {}
+        self.shapes: dict[str, dict] = {}
+        self.choices: dict[str, dict] = {}
         self.mixins: dict[str, dict] = {}
 
     # -- token access -------------------------------------------------------
@@ -279,16 +297,14 @@ class _Parser:
 
         # Build IR dict
         ir: dict[str, Any] = {}
+        if self.namespace is not None:
+            self.meta["namespace"] = self.namespace
         if self.meta:
             ir["meta"] = self.meta
-        if self.types:
-            ir["types"] = self.types
-        if self.unions:
-            ir["unions"] = self.unions
-        if self.enums:
-            ir["enums"] = self.enums
-        if self.type_aliases:
-            ir["type_aliases"] = self.type_aliases
+        if self.shapes:
+            ir["shapes"] = self.shapes
+        if self.choices:
+            ir["choices"] = self.choices
         if self.mixins:
             ir["mixins"] = self.mixins
         return ir
@@ -305,28 +321,22 @@ class _Parser:
             )
 
         keyword = tok.value
-        if keyword == "model":
+        if keyword == "namespace":
+            self._parse_namespace()
+        elif keyword == "model":
             self._parse_model()
-        elif keyword == "alias":
-            self._parse_alias()
-        elif keyword == "aliases":
-            self._parse_aliases()
         elif keyword == "mixin":
             self._parse_mixin()
         elif keyword == "mixins":
             self._parse_mixins()
-        elif keyword == "enum":
-            self._parse_enum()
-        elif keyword == "enums":
-            self._parse_enums()
-        elif keyword == "type":
-            self._parse_type()
-        elif keyword == "types":
-            self._parse_types()
-        elif keyword == "union":
-            self._parse_union()
-        elif keyword == "unions":
-            self._parse_unions()
+        elif keyword == "choice":
+            self._parse_choice()
+        elif keyword == "choices":
+            self._parse_choices()
+        elif keyword == "shape":
+            self._parse_shape()
+        elif keyword == "shapes":
+            self._parse_shapes()
         else:
             raise ParseError(
                 f"unexpected keyword {keyword!r}",
@@ -334,15 +344,25 @@ class _Parser:
             )
         self._expect(TT.RPAREN)
 
+    # -- namespace ----------------------------------------------------------
+
+    def _parse_namespace(self):
+        """(namespace com.example.foo)"""
+        self._expect(TT.IDENT, "namespace")
+        ns_tok = self._expect(TT.IDENT)
+        if self.namespace is not None:
+            raise ParseError("duplicate namespace declaration", ns_tok.line, ns_tok.col)
+        self.namespace = ns_tok.value
+
     # -- model --------------------------------------------------------------
 
     def _parse_model(self):
-        """(model Name v7.0 "description")"""
+        """(model Name v8.0 "description")"""
         self._expect(TT.IDENT, "model")
         name_tok = self._expect(TT.IDENT)
         self.meta["name"] = name_tok.value
 
-        # Version: expect an identifier like v7.0
+        # Version: expect an identifier like v8.0
         ver_tok = self._expect(TT.IDENT)
         ver = ver_tok.value
         if ver.startswith("v"):
@@ -353,25 +373,6 @@ class _Parser:
         if self._peek().type == TT.STRING:
             desc_tok = self._advance()
             self.meta["description"] = desc_tok.value
-
-    # -- alias --------------------------------------------------------------
-
-    def _parse_alias_body(self):
-        """Parse a single alias: Name Target (after keyword consumed)."""
-        name_tok = self._expect(TT.IDENT)
-        target_tok = self._expect(TT.IDENT)
-        self.type_aliases[name_tok.value] = target_tok.value
-
-    def _parse_alias(self):
-        """(alias Name Target)"""
-        self._expect(TT.IDENT, "alias")
-        self._parse_alias_body()
-
-    def _parse_aliases(self):
-        """(aliases Name1 Target1 Name2 Target2 ...)"""
-        self._expect(TT.IDENT, "aliases")
-        while self._peek().type == TT.IDENT:
-            self._parse_alias_body()
 
     # -- mixin --------------------------------------------------------------
 
@@ -386,55 +387,6 @@ class _Parser:
             self._expect(TT.RANGLE)
         return params
 
-    def _parse_mixin_body(self):
-        """Parse a single mixin: Name [<T, U>] field ... (after keyword consumed)."""
-        name_tok = self._expect(TT.IDENT)
-        type_params = self._parse_type_params()
-        fields = self._parse_fields_until_rparen()
-        mixin_body: dict[str, Any] = {}
-        if type_params:
-            mixin_body["type_params"] = type_params
-        mixin_body["fields"] = fields
-        self.mixins[name_tok.value] = mixin_body
-
-    def _parse_mixin(self):
-        """(mixin Name [<T>] field ...)"""
-        self._expect(TT.IDENT, "mixin")
-        self._parse_mixin_body()
-
-    def _parse_mixins(self):
-        """(mixins (Name1 [<T>] field ...) (Name2 field ...) ...)"""
-        self._expect(TT.IDENT, "mixins")
-        while self._peek().type == TT.LPAREN:
-            self._advance()  # consume '('
-            self._parse_mixin_body()
-            self._expect(TT.RPAREN)
-
-    # -- enum ---------------------------------------------------------------
-
-    def _parse_enum_body(self):
-        """Parse a single enum: Name val1 val2 ... (after keyword consumed)."""
-        name_tok = self._expect(TT.IDENT)
-        values = []
-        while self._peek().type == TT.IDENT:
-            values.append(self._advance().value)
-        self.enums[name_tok.value] = values
-
-    def _parse_enum(self):
-        """(enum Name val1 val2 ...)"""
-        self._expect(TT.IDENT, "enum")
-        self._parse_enum_body()
-
-    def _parse_enums(self):
-        """(enums (Name1 val ...) (Name2 val ...) ...)"""
-        self._expect(TT.IDENT, "enums")
-        while self._peek().type == TT.LPAREN:
-            self._advance()  # consume '('
-            self._parse_enum_body()
-            self._expect(TT.RPAREN)
-
-    # -- type ---------------------------------------------------------------
-
     def _parse_mixin_ref(self) -> str:
         """Parse a mixin reference: Name or Name<Type, ...>"""
         name = self._expect(TT.IDENT).value
@@ -446,45 +398,49 @@ class _Parser:
             return f"{name}<{', '.join(args)}>"
         return name
 
-    def _parse_type_body(self):
-        """Parse a single type: Name [MixinRef ...] field ... (after keyword consumed)."""
-        name_tok = self._expect(TT.IDENT)
-
-        # Optional mixin list in brackets
+    def _parse_use_list(self) -> list[str]:
+        """Parse optional mixin use list: [MixinRef ...]"""
         use_list: list[str] = []
         if self._match(TT.LBRACKET):
             while self._peek().type == TT.IDENT:
                 use_list.append(self._parse_mixin_ref())
             self._expect(TT.RBRACKET)
+        return use_list
 
+    def _parse_mixin_body(self):
+        """Parse a single mixin: Name [<T, U>] [MixinRef ...] field ... (after keyword consumed)."""
+        name_tok = self._expect(TT.IDENT)
+        type_params = self._parse_type_params()
+        use_list = self._parse_use_list()
         fields = self._parse_fields_until_rparen()
-
-        type_body: dict[str, Any] = {}
+        mixin_body: dict[str, Any] = {}
+        if type_params:
+            mixin_body["type_params"] = type_params
         if use_list:
-            type_body["use"] = use_list
-        type_body["fields"] = fields
-        self.types[name_tok.value] = type_body
+            mixin_body["use"] = use_list
+        mixin_body["fields"] = fields
+        self.mixins[name_tok.value] = mixin_body
 
-    def _parse_type(self):
-        """(type Name [Mixin1<T> Mixin2] field ...)"""
-        self._expect(TT.IDENT, "type")
-        self._parse_type_body()
+    def _parse_mixin(self):
+        """(mixin Name [<T>] [MixinRef ...] field ...)"""
+        self._expect(TT.IDENT, "mixin")
+        self._parse_mixin_body()
 
-    def _parse_types(self):
-        """(types (Name1 [Mixin] field ...) (Name2 field ...) ...)"""
-        self._expect(TT.IDENT, "types")
+    def _parse_mixins(self):
+        """(mixins (Name1 [<T>] [MixinRef ...] field ...) (Name2 field ...) ...)"""
+        self._expect(TT.IDENT, "mixins")
         while self._peek().type == TT.LPAREN:
             self._advance()  # consume '('
-            self._parse_type_body()
+            self._parse_mixin_body()
             self._expect(TT.RPAREN)
 
-    # -- union --------------------------------------------------------------
+    # -- choice -------------------------------------------------------------
 
-    def _parse_union_body(self):
-        """Parse a single union: Name (common ...) (Variant ...) BareVariant ... (after keyword consumed)."""
+    def _parse_choice_body(self):
+        """Parse a single choice: Name (common ...) (Variant ...) BareVariant ... (after keyword consumed)."""
         name_tok = self._expect(TT.IDENT)
 
-        union_body: dict[str, Any] = {}
+        choice_body: dict[str, Any] = {}
         while self._peek().type != TT.RPAREN and self._peek().type != TT.EOF:
             if self._peek().type == TT.LPAREN:
                 # Sub-form: either (common ...) or (Variant ...)
@@ -494,33 +450,63 @@ class _Parser:
                 self._expect(TT.RPAREN)
 
                 if block_name_tok.value == "common":
-                    union_body["common"] = fields
+                    choice_body["common"] = fields
                 else:
-                    union_body[block_name_tok.value] = fields
+                    choice_body[block_name_tok.value] = fields
             elif self._peek().type == TT.IDENT:
                 # Bare variant (no fields)
                 variant_name = self._advance().value
-                union_body[variant_name] = {}
+                choice_body[variant_name] = {}
             else:
                 tok = self._peek()
                 raise ParseError(
-                    f"expected variant name or '(' in union, got {tok.type} {tok.value!r}",
+                    f"expected variant name or '(' in choice, got {tok.type} {tok.value!r}",
                     tok.line, tok.col,
                 )
 
-        self.unions[name_tok.value] = union_body
+        self.choices[name_tok.value] = choice_body
 
-    def _parse_union(self):
-        """(union Name (common ...) (Variant ...) BareVariant ...)"""
-        self._expect(TT.IDENT, "union")
-        self._parse_union_body()
+    def _parse_choice(self):
+        """(choice Name (common ...) (Variant ...) BareVariant ...)"""
+        self._expect(TT.IDENT, "choice")
+        self._parse_choice_body()
 
-    def _parse_unions(self):
-        """(unions (Name1 Variant ...) (Name2 (common ...) Variant ...) ...)"""
-        self._expect(TT.IDENT, "unions")
+    def _parse_choices(self):
+        """(choices (Name1 Variant ...) (Name2 (common ...) Variant ...) ...)"""
+        self._expect(TT.IDENT, "choices")
         while self._peek().type == TT.LPAREN:
             self._advance()  # consume '('
-            self._parse_union_body()
+            self._parse_choice_body()
+            self._expect(TT.RPAREN)
+
+    # -- shape --------------------------------------------------------------
+
+    def _parse_shape_body(self):
+        """Parse a single shape: Name [MixinRef ...] field ... (after keyword consumed)."""
+        name_tok = self._expect(TT.IDENT)
+
+        # Optional mixin list in brackets
+        use_list = self._parse_use_list()
+
+        fields = self._parse_fields_until_rparen()
+
+        shape_body: dict[str, Any] = {}
+        if use_list:
+            shape_body["use"] = use_list
+        shape_body["fields"] = fields
+        self.shapes[name_tok.value] = shape_body
+
+    def _parse_shape(self):
+        """(shape Name [Mixin1<T> Mixin2] field ...)"""
+        self._expect(TT.IDENT, "shape")
+        self._parse_shape_body()
+
+    def _parse_shapes(self):
+        """(shapes (Name1 [Mixin] field ...) (Name2 field ...) ...)"""
+        self._expect(TT.IDENT, "shapes")
+        while self._peek().type == TT.LPAREN:
+            self._advance()  # consume '('
+            self._parse_shape_body()
             self._expect(TT.RPAREN)
 
     # -- fields -------------------------------------------------------------
@@ -600,7 +586,7 @@ class _Parser:
 def parse_forma(source: str) -> dict[str, Any]:
     """Parse a .forma source string and return an IR dict.
 
-    The returned dict has keys: meta, types, unions, enums, type_aliases, mixins.
+    The returned dict has keys: meta, shapes, choices, mixins.
 
     Raises ParseError or LexError on malformed input.
     """

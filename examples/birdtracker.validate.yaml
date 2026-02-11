@@ -1,7 +1,7 @@
 # BirdTracker — Validation Satellite
 #
 # Satellite document for birdtracker.forma
-# Defines behavioral validation rules that reference the core model's types.
+# Defines behavioral validation rules that reference the core model's shapes.
 # These rules describe how data is *checked*, not what it *is*.
 
 validations:

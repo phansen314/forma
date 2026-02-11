@@ -4,21 +4,21 @@ A data model definition format. Describe the shape of your data once, generate c
 
 ## What is Forma?
 
-Forma is a language-agnostic data model definition format designed for agent-assisted code generation. You write a single `model.forma` describing your types. Target profiles tell the generator how to express that structure in Kotlin, TypeScript, SQL, or anything else.
+Forma is a language-agnostic data model definition format designed for agent-assisted code generation. You write a single `model.forma` describing your shapes. Target profiles tell the generator how to express that structure in Kotlin, TypeScript, SQL, or anything else.
 
 ```forma
-(type Location
+(shape Location
   latitude: float
   longitude: float)
 
-(type User [Timestamped]
+(shape User [Timestamped]
   id: UserId
   name: string
   email: Email
   status: Status
   location: Location?)
 
-(enum Status active archived deleted)
+(choice Status active archived deleted)
 ```
 
 ## Design Philosophy
@@ -46,15 +46,15 @@ flowchart LR
 
 ## Type System
 
-Five concepts for describing data shape:
+Three concepts for describing data shape:
 
 | Concept | Purpose | Example |
 |---|---|---|
-| **Types** | Named structured types | `(type Location latitude: float longitude: float)` |
-| **Unions** | One of several variants | `(union Payment (CreditCard ...) (BankTransfer ...) Cash)` |
-| **Enums** | Fixed value sets | `(enum Status active archived deleted)` |
-| **Type aliases** | Semantic names | `(alias UserId UUID)` |
-| **Mixins** | Shared field templates | `(mixin Timestamped created_at: datetime)` |
+| **Shapes** | Named structured types | `(shape Location latitude: float longitude: float)` |
+| **Choices** | Variants or fixed value sets | `(choice Status active archived deleted)` |
+| **Mixins** | Shared field templates (with composition) | `(mixin Auditable [Timestamped] created_by: UserId)` |
+
+Unresolved names (like `UserId`, `Email`) are **atoms** — target profiles map them to concrete types.
 
 ## Quick Start
 
@@ -65,13 +65,11 @@ Create a `model.forma`:
 ```forma
 (model MyApp v1.0 "My application data model")
 
-(alias UserId UUID)
-
 (mixin Timestamped
   created_at: datetime
   updated_at: datetime?)
 
-(type User [Timestamped]
+(shape User [Timestamped]
   id: UserId
   name: string
   email: string)
@@ -134,10 +132,9 @@ forma/
 
 - **S-expression syntax**: Clean `(keyword name ...body...)` forms — minimal token types
 - **Nullability**: `name: string` (required) vs `bio: text?` (nullable)
-- **Unified types**: All structured types in a single `types:` section — role determined by structural signals
-- **Unions**: Discriminated sum types with optional shared fields
-- **Enums**: Space-separated values: `(enum Status active deleted)`
-- **Mixins**: `[Timestamped]` — shared fields without inheritance
+- **Shapes**: All structured types via `(shape ...)` — role determined by structural signals
+- **Choices**: Unified enums + unions via `(choice ...)` — all-bare = enum-like, fielded = union-like
+- **Mixins**: `[Timestamped]` — shared fields with composition support
 - **Structural primitives**: `[T]` (collection), `{K, V}` (association) — shorthand for `coll<T>`, `dict<K, V>`
 - **Angle-bracket generics**: `tree<T>`, `Versioned<Bird>` — unified type parameterization + named wrappers via target profiles
 - **References as fields**: `bird: Bird`, `observations: [Observation]` — targets infer cardinality
@@ -145,7 +142,7 @@ forma/
 
 ## Using the Agent Skill
 
-Copy the `skill/` directory into your agent's skill path. The skill triggers on data modeling tasks — defining types, generating code, reviewing models, creating target profiles.
+Copy the `skill/` directory into your agent's skill path. The skill triggers on data modeling tasks — defining shapes, generating code, reviewing models, creating target profiles.
 
 The agent reads `SPEC.md` for format details and `SKILL.md` for task workflows. Reference docs in `skill/references/` provide the satellite architecture guide, a syntax cheat sheet, and a Kotlin profile example.
 
