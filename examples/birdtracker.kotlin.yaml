@@ -5,17 +5,18 @@
 
 target: kotlin
 
-globals:
-  package: com.example.birdtracker.model
-  immutability: full
-  nullability: strict
-  collections:
-    library: kotlinx-immutable
-    collection: PersistentList       # default for [T] (= coll<T>)
-    association: PersistentMap        # default for {K, V} (= dict<K, V>)
-    custom_wrappers:
-      tree: com.example.collections.Tree
-  serialization: kotlinx-serialization
+generators:
+  model:
+    package: com.example.birdtracker.model
+    immutability: full
+    nullability: strict
+    collections:
+      library: kotlinx-immutable
+      collection: PersistentList       # default for [T] (= coll<T>)
+      association: PersistentMap        # default for {K, V} (= dict<K, V>)
+      custom_wrappers:
+        tree: com.example.collections.Tree
+    serialization: kotlinx-serialization
 
 type_mappings:
   UUID: java.util.UUID
@@ -28,30 +29,26 @@ type_mappings:
   date: kotlinx.datetime.LocalDate
   json: kotlinx.serialization.json.JsonElement
 
-shapes:
-  default:
-    style: data_class
-    implements: []
-    annotations: []
-  overrides:
+emitters:
+  model:
+    default:
+      shape: data_class
+      choice: enum_class
+      atom: typealias
+
     Bird:
       annotations: ["@Serializable"]
       implements: [Identifiable]
     Observation:
       annotations: ["@Serializable"]
 
-choices:
-  default: enum_class
-  # enum_class    → for all-bare choices (enum-like)
-  # sealed_class  → for fielded choices (union-like)
-  overrides:
-    Habitat: bitmask
+    Habitat:
+      style: bitmask
 
-atoms:
-  default: typealias
-  overrides:
-    BirdId: value_class
-    UserId: value_class
+    BirdId:
+      style: value_class
+    UserId:
+      style: value_class
 
 interfaces:
   Identifiable:

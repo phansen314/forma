@@ -136,11 +136,48 @@ Targets infer cardinality from cross-references:
 | `tags: [Tag]` | `posts: [Post]` | **N:M** |
 | `profile: Profile` | `user: User` | **1:1** |
 
+## Validation Satellite
+
+Named contexts with optional inheritance and atom-type defaults:
+
+```yaml
+validations:
+  base:
+    default:
+      string: [max_length: 10000]
+      datetime: [immutable]
+    User:
+      email: [format: email]
+      username: [min_length: 3, max_length: 50]
+  api:
+    extends: base
+    default:
+      string: [max_length: 50000]
+  persistence:
+    extends: base
+    default:
+      string: [max_length: 255]
+```
+
+Reserved keys in a context: `extends:`, `default:`. Everything else is a shape name.
+
 ## Document Architecture
 
 ```
-model.forma              ← Structure (hub)
-model.validate.yaml      ← Validation rules (satellite)
-model.kotlin.yaml        ← Kotlin target profile (satellite)
-model.sql.yaml           ← SQL target profile (satellite)
+model.forma                  ← Structure (hub)
+profiles/kotlin/*.yaml       ← Base Kotlin mappings (auto-loaded)
+model.validate.yaml          ← Validation rules (satellite)
+model.kotlin.yaml            ← Kotlin target profile (satellite)
+model.kotlin.api.yaml        ← Kotlin API layer overrides (satellite)
+model.sql.yaml               ← SQL target profile (satellite)
 ```
+
+## CLI Invocation
+
+```
+/forma <hub-file> --<target> [satellite-files...] [--no-base] [--validate]
+```
+
+Merge order: hub → `profiles/<target>/*.yaml` → `<stem>.<target>.yaml` → explicit satellites → `<stem>.<target>.*.yaml` layers.
+
+See `skill/SKILL.md` § CLI Invocation for full resolution rules and examples.

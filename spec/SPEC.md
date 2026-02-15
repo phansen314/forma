@@ -415,6 +415,101 @@ The hub is pure shape. These concerns belong in satellites:
 
 ---
 
+## Validation Satellite
+
+The validation satellite (`model.validate.yaml`) defines behavioral rules — format checks, range constraints, immutability — that reference shapes and fields from the hub. Rules are target-independent: `format: email` means the same thing whether emitted as a Jakarta `@Email` annotation, a Zod `.email()`, or a SQL `CHECK`.
+
+### Named Contexts
+
+Validation rules are organized into named contexts. Each context is a self-contained rule set for a specific use case — API input validation, database persistence, frontend display, etc.
+
+```yaml
+validations:
+  <context-name>:
+    extends: <other-context>     # optional — inherit rules from another context
+    default:                      # optional — per-atom-type fallback rules
+      <atom-type>:
+        - <rule>
+    <ShapeName>:
+      <field>:
+        - <rule>
+```
+
+Reserved keys within a context: `extends:` and `default:`. Everything else is a shape name from the hub.
+
+### `default:` — Atom-Type Fallbacks
+
+The `default:` block provides per-atom-type fallback rules. If a field's type matches an atom in `default:` and the field has no explicit rules, the default rules apply.
+
+```yaml
+validations:
+  base:
+    default:
+      string:
+        - max_length: 10000       # all string fields default to max 10000
+      datetime:
+        - immutable               # all datetime fields default to immutable
+```
+
+Defaults are keyed by atom type because validation operates at the field level, and fields have types. "All strings have max_length 255" is a real DB constraint. Explicit field rules always override the type default — if `User.username` has its own rules, the `string` default does not apply to it.
+
+### `extends:` — Context Inheritance
+
+A context can inherit from another context using `extends:`. The child starts with all of the parent's rules and overlays its own.
+
+```yaml
+validations:
+  base:
+    default:
+      string:
+        - max_length: 10000
+    User:
+      email:
+        - format: email
+      username:
+        - min_length: 3
+        - max_length: 50
+
+  api:
+    extends: base
+    default:
+      string:
+        - max_length: 50000       # relax string limits for API input
+
+  persistence:
+    extends: base
+    default:
+      string:
+        - max_length: 255         # tighten string limits for DB columns
+    User:
+      email:
+        - max_length: 320         # override base's email rules entirely
+```
+
+### Merge Semantics
+
+1. **`extends:` resolution**: Start with the parent's rules. Overlay the child's rules at field granularity — if the child defines any rules for `User.email`, they replace the parent's rules for that field entirely. Unmentioned fields keep the parent's rules.
+
+2. **`default:` application**: After extension, `default:` fills in rules for fields that have no explicit entry. If a field's atom type has a default and the field has no explicit rules (from this context or an inherited parent), the default applies. Explicit rules always win.
+
+3. **Layer stacking**: `model.validate.api.yaml` can add or override rules in the `api` context from `model.validate.yaml`. Same merge model as target profiles — later documents override earlier ones for conflicting keys.
+
+### Interaction with Target Profiles
+
+The validation satellite says *what* constraints exist. The target profile says *how* to implement them. Validation library settings live in the generator, not the validation satellite:
+
+```yaml
+# In model.kotlin.yaml (target profile)
+generators:
+  model:
+    package: com.example.model
+    validation:
+      library: jakarta-validation   # how to emit validation code
+      context: api                  # which validation context to apply
+```
+
+---
+
 ## Processing Pipeline
 
 ```mermaid

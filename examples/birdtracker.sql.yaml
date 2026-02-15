@@ -5,17 +5,24 @@
 
 target: sql
 
-globals:
-  dialect: postgresql
-  schema: public
-  naming:
-    tables: snake_case_plural          # User → users
-    columns: snake_case                # createdAt → created_at
-    foreign_keys: "{table}_{column}"   # e.g., observations.bird_id
-    join_tables: "{table1}_{table2}"   # e.g., birds_tags
-    indexes: "idx_{table}_{columns}"   # e.g., idx_users_username
-    primary_keys: "pk_{table}"         # e.g., pk_users
-    unique_constraints: "uq_{table}_{column}"
+generators:
+  schema:
+    dialect: postgresql
+    schema: public
+    naming:
+      tables: snake_case_plural          # User -> users
+      columns: snake_case                # createdAt -> created_at
+      foreign_keys: "{table}_{column}"   # e.g., observations.bird_id
+      join_tables: "{table1}_{table2}"   # e.g., birds_tags
+      indexes: "idx_{table}_{columns}"   # e.g., idx_users_username
+      primary_keys: "pk_{table}"         # e.g., pk_users
+      unique_constraints: "uq_{table}_{column}"
+    primary_key:
+      strategy: table
+      generate_pk_default: true           # DEFAULT gen_random_uuid()
+      timestamps:
+        created_at_default: NOW()
+        updated_at_trigger: true          # auto-update via trigger
 
 type_mappings:
   UUID: UUID
@@ -28,41 +35,27 @@ type_mappings:
   date: DATE
   json: JSONB
 
-shapes:
-  default: embedded_columns
-  # embedded_columns → flattened with prefix: location_latitude, location_longitude
-  # json_column      → stored as JSONB in a single column
-  # separate_table   → normalized into its own table with FK
+emitters:
+  schema:
+    default:
+      shape: embedded_columns
+      # embedded_columns -> flattened with prefix: location_latitude, location_longitude
+      # json_column      -> stored as JSONB in a single column
+      # separate_table   -> normalized into its own table with FK
+      choice: native_enum
+      # native_enum      -> CREATE TYPE ... AS ENUM (...) for all-bare choices
+      # check            -> VARCHAR + CHECK constraint
+      # jsonb_column     -> single JSONB column with discriminator for fielded choices
+      # single_table     -> type column + nullable variant columns
+      # separate_tables  -> one table per variant with shared PK
+      atom: transparent
+      # transparent      -> resolves to base type, no SQL-level distinction
+      # domain           -> CREATE DOMAIN Name AS Type (named type with optional constraints)
 
-  with_primary_key:
-    strategy: table
-    generate_pk_default: true           # DEFAULT gen_random_uuid()
-    timestamps:
-      created_at_default: NOW()
-      updated_at_trigger: true          # auto-update via trigger
-
-  overrides: {}
-
-choices:
-  default: native_enum
-  # native_enum → CREATE TYPE ... AS ENUM (...) — for all-bare choices
-  # check       → VARCHAR + CHECK constraint
-  # jsonb_column → single JSONB column with discriminator — for fielded choices
-  # single_table → type column + nullable variant columns
-  # separate_tables → one table per variant with shared PK
-
-  overrides:
     Habitat: check
     # Habitat uses CHECK because it appears in a [Habitat] collection field,
     # which maps to a text array — native enums can't be array elements
     # in all PostgreSQL versions without casts.
-
-atoms:
-  default: transparent
-  # transparent → resolves to base type, no SQL-level distinction
-  # domain     → CREATE DOMAIN Name AS Type (named type with optional constraints)
-
-  overrides: {}
 
 relationships:
   one_to_many:

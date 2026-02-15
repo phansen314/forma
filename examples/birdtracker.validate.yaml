@@ -3,60 +3,80 @@
 # Satellite document for birdtracker.forma
 # Defines behavioral validation rules that reference the core model's shapes.
 # These rules describe how data is *checked*, not what it *is*.
+#
+# Named contexts allow different rule sets for different use cases.
+# `extends:` inherits rules from another context.
+# `default:` provides per-atom-type fallback rules.
 
 validations:
-  User:
-    email:
-      - format: email
-    username:
-      - min_length: 3
-      - max_length: 50
-      - pattern: "^[a-z0-9_]+$"
-    created_at:
-      - immutable
+  base:
+    default:
+      string:
+        - max_length: 10000
+      datetime:
+        - immutable
 
-  Bird:
-    name:
-      common:
+    User:
+      email:
+        - format: email
+      username:
+        - min_length: 3
+        - max_length: 50
+        - pattern: "^[a-z0-9_]+$"
+
+    Bird:
+      name:
+        common:
+          - min_length: 1
+          - max_length: 200
+        scientific:
+          - min_length: 1
+          - max_length: 200
+          - pattern: "^[A-Z][a-z]+ [a-z]+$"    # binomial nomenclature
+      wingspan_cm:
+        - min: 1
+        - max: 500
+      description:
+        - max_length: 5000
+      photo_url:
+        - format: uri
+
+    Observation:
+      timestamp:
+        - not_future: true
+      location:
+        latitude:
+          - min: -90
+          - max: 90
+        longitude:
+          - min: -180
+          - max: 180
+        altitude:
+          - min: -500
+          - max: 15000
+      count:
+        - min: 1
+        - max: 10000
+      notes:
+        - max_length: 10000
+
+    Tag:
+      label:
         - min_length: 1
-        - max_length: 200
-      scientific:
-        - min_length: 1
-        - max_length: 200
-        - pattern: "^[A-Z][a-z]+ [a-z]+$"    # binomial nomenclature
-    wingspan_cm:
-      - min: 1
-      - max: 500
-    description:
-      - max_length: 5000
-    photo_url:
-      - format: uri
-    created_at:
-      - immutable
+        - max_length: 100
+        - pattern: "^[a-z0-9][a-z0-9_-]*$"
 
-  Observation:
-    timestamp:
-      - not_future: true
-    location:
-      latitude:
-        - min: -90
-        - max: 90
-      longitude:
-        - min: -180
-        - max: 180
-      altitude:
-        - min: -500
-        - max: 15000
-    count:
-      - min: 1
-      - max: 10000
-    notes:
-      - max_length: 10000
-    created_at:
-      - immutable
+  api:
+    extends: base
+    default:
+      string:
+        - max_length: 50000
 
-  Tag:
-    label:
-      - min_length: 1
-      - max_length: 100
-      - pattern: "^[a-z0-9][a-z0-9_-]*$"
+  persistence:
+    extends: base
+    default:
+      string:
+        - max_length: 255
+    User:
+      email:
+        - max_length: 320
