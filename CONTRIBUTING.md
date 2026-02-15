@@ -12,13 +12,11 @@ A satellite document for the existing BirdTracker model showing your target's co
 
 **Required sections:**
 - `target:` — target identifier (e.g., `kotlin`, `sql`, `typescript`)
-- `globals:` — target-wide settings (package/module, conventions)
+- `generators:` — named output contexts (package/module, immutability, collections, serialization)
 - `type_mappings:` — how Forma primitives map to target types
+- `emitters:` — per-generator concept mapping (default styles + per-name overrides for shapes, choices, atoms)
 
 **Common optional sections:**
-- `shapes:` — representation strategy + per-shape overrides (style, annotations, interfaces)
-- `choices:` — choice representation strategy + per-choice overrides
-- `atoms:` — how atoms are represented (transparent, branded, wrapped)
 - `relationships:` — FK naming, join strategies
 - `indexes:` — target-specific indexing (SQL profiles)
 - `interfaces:` — generated interfaces (typed language profiles)

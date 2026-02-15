@@ -55,22 +55,6 @@
   (Ruling
     text: string
     source: string)
-  (BirdFeeder
-    slots: [DiceFace])
-  (PlayerFood
-    supply: {Food, int})
-  (ActionsTaken
-    actions: [Action]))
-
-// Card and game-state shapes
-(shapes
-  (BirdState
-    id: BirdId
-    tucked_count: int
-    cached_food: {Food, int}
-    eggs: int
-    lives_in: Habitat
-    position: int)
   (BirdCard
     id: BirdId
     name: BirdName
@@ -102,7 +86,23 @@
     expansion: Expansion
     duet: bool
     condition: string
-    explanatory_text: string)
+    explanatory_text: string))
+
+// Card and game-state shapes
+(shapes
+  (BirdState
+    id: BirdId
+    tucked_count: int
+    cached_food: {Food, int}
+    eggs: int
+    lives_in: Habitat
+    position: int)
+  (PlayerFood
+    supply: {Food, int})
+  (BirdFeeder
+    slots: [DiceFace])
+  (ActionsTaken
+    actions: [Action])  
   (PlayerState
     birds: [BirdState]
     cards: [BirdId]

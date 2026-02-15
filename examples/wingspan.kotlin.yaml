@@ -1,0 +1,47 @@
+target: kotlin
+
+generators:
+  engine:
+    package: tech.codingzen.wingspan.model
+    output: ./output/generated-wingspan.kt
+    immutability: full
+    nullability: strict
+    collections:
+      library: kotlinx-immutable
+      collection: PersistentList
+      association: PersistentMap
+    serialization: none
+
+emitters:
+  engine:
+    default:
+      shape: data_class
+      choice: enum
+      atom: typealias
+
+    BirdId: int
+    BonusId: int
+    GoalId: int
+    PlayerId: int
+    Round: int
+
+    BirdState:
+      style: bitmask
+      bits:
+        id: 10
+        tucked_count: 6
+        eggs: 4
+        cached_food: 6 per enum
+        position: 3
+    BirdFeeder:
+      style: bitmask
+      bits:
+        slots: 5 of enum
+    ActionsTaken:
+      style: bitmask
+      bits:
+        actions: 4 of enum
+    PlayerFood:
+      style: bitmask
+      bits:
+        supply: 4 per enum

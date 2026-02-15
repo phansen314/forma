@@ -1,0 +1,44 @@
+# Kotlin Type Mappings — Base Satellite
+#
+# Universal Forma-to-Kotlin type mappings and stdlib collection defaults.
+# Layer model-specific satellites on top for package, shapes, choices, etc.
+
+target: kotlin
+
+globals:
+  collections:
+    collection: List        # [T] -> List<T>
+    association: Map        # {K, V} -> Map<K, V>
+
+type_mappings:
+  # Strings
+  string: String
+  text: String
+
+  # Integers
+  int: Int
+  long: Long
+  short: Short
+  byte: Byte
+
+  # Floating point / decimal
+  float: Double
+  decimal: java.math.BigDecimal
+
+  # Boolean
+  bool: Boolean
+
+  # Date / time
+  datetime: kotlinx.datetime.Instant
+  timestamp: kotlinx.datetime.Instant
+  date: kotlinx.datetime.LocalDate
+  time: kotlinx.datetime.LocalTime
+
+  # Identifiers
+  UUID: java.util.UUID
+  uri: java.net.URI
+
+  # Structured / binary
+  json: kotlinx.serialization.json.JsonElement
+  binary: ByteArray
+  bytes: ByteArray

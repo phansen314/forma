@@ -7,11 +7,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 ## [Unreleased]
 
 ### Added
+- **Named validation contexts** — Validation satellites now organize rules into named contexts (`base`, `api`, `persistence`, etc.) instead of a flat structure. Each context is a self-contained rule set.
+  - `extends:` — context inheritance. A child context starts with the parent's rules and overlays its own at field granularity. Unmentioned fields keep the parent's rules.
+  - `default:` — per-atom-type fallback rules within a context. "All strings have `max_length: 255`" is expressed as a default. Explicit field rules always override.
+  - Reserved keys within a context: `extends:` and `default:`. Everything else is a shape name.
+  - Target profile interaction: `generators.<name>.validation.context` selects which context to apply; `generators.<name>.validation.library` controls how rules become annotations.
 - **Block comments** — `/* ... */` with nesting support. `/* outer /* inner */ still outer */` is valid. Unterminated block comments are a parse error (E000). Comment delimiters are stripped during lexing (not tokens); token count stays at 12.
 - **Namespace declaration** — `(namespace com.example.foo)` declares a logical package/module identity for the model. Optional, at most one per file, stored in `meta.namespace`. Generators use it as the default package when the satellite doesn't override via `globals.package`.
 - `namespace_form` production added to EBNF grammar
 - Parser: `_parse_namespace()` method, `namespace` keyword dispatch, duplicate detection
 - Validator: accepts optional `namespace` key in `meta` (E004 if present but not a non-empty string)
+- **CLI invocation** — `/forma <hub-file> --<target> [satellite-files...] [--no-base] [--validate]` provides deterministic satellite resolution. Auto-discovers base profiles from `profiles/<target>/`, convention satellites, and layer profiles.
+- **Atom coverage validation** — `--validate` flag checks that every atom in the hub has a resolution path (via `type_mappings`, `atoms.overrides`, or `atoms.default`). Reports unmapped atoms as errors and warns on atoms relying only on `atoms.default`.
+- **Base profiles** — `profiles/<target>/` directory convention for universal type mappings shared across all models targeting a given language. Auto-loaded before model-specific satellites.
+- Satellite merge order expanded from 3 steps to 5: hub → base profile → convention satellite → explicit satellites → layer profiles
+- Documentation updated: `SPEC.md`, `SKILL.md`, `satellite-architecture.md`, `quick-reference.md`, `kotlin-profile.md`, `CLAUDE.md`
 
 ## [8.0]
 
