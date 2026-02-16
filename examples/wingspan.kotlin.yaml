@@ -1,7 +1,15 @@
 target: kotlin
 
-generators:
+emitters:
+  atoms:
+    BirdId: int
+    BonusId: int
+    GoalId: int
+    PlayerId: int
+    Round: int
+
   engine:
+    # Generation settings
     package: tech.codingzen.wingspan.model
     output: ./output/generated-wingspan.kt
     immutability: full
@@ -9,22 +17,17 @@ generators:
     collections:
       library: kotlinx-immutable
       collection: PersistentList
+      set: PersistentSet
       association: PersistentMap
     serialization: none
 
-emitters:
-  engine:
-    default:
-      shape: data_class
-      choice: enum
-      atom: typealias
+    shape: data_class
+    choice: enum
 
-    BirdId: int
-    BonusId: int
-    GoalId: int
-    PlayerId: int
-    Round: int
-
+    # Per-name overrides
+    BirdCard:
+      habitats: set
+      beak: set
     BirdState:
       style: bitmask
       bits:

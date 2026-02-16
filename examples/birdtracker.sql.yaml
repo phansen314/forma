@@ -5,8 +5,25 @@
 
 target: sql
 
-generators:
+type_mappings:
+  UUID: UUID
+  string: VARCHAR(255)
+  text: TEXT
+  int: INTEGER
+  float: DOUBLE PRECISION
+  bool: BOOLEAN
+  datetime: TIMESTAMPTZ
+  date: DATE
+  json: JSONB
+
+emitters:
+  atoms:
+    BirdId: UUID
+    UserId: UUID
+    Email: string
+
   schema:
+    # Generation settings
     dialect: postgresql
     schema: public
     naming:
@@ -24,33 +41,16 @@ generators:
         created_at_default: NOW()
         updated_at_trigger: true          # auto-update via trigger
 
-type_mappings:
-  UUID: UUID
-  string: VARCHAR(255)
-  text: TEXT
-  int: INTEGER
-  float: DOUBLE PRECISION
-  bool: BOOLEAN
-  datetime: TIMESTAMPTZ
-  date: DATE
-  json: JSONB
-
-emitters:
-  schema:
-    default:
-      shape: embedded_columns
-      # embedded_columns -> flattened with prefix: location_latitude, location_longitude
-      # json_column      -> stored as JSONB in a single column
-      # separate_table   -> normalized into its own table with FK
-      choice: native_enum
-      # native_enum      -> CREATE TYPE ... AS ENUM (...) for all-bare choices
-      # check            -> VARCHAR + CHECK constraint
-      # jsonb_column     -> single JSONB column with discriminator for fielded choices
-      # single_table     -> type column + nullable variant columns
-      # separate_tables  -> one table per variant with shared PK
-      atom: transparent
-      # transparent      -> resolves to base type, no SQL-level distinction
-      # domain           -> CREATE DOMAIN Name AS Type (named type with optional constraints)
+    shape: embedded_columns
+    # embedded_columns -> flattened with prefix: location_latitude, location_longitude
+    # json_column      -> stored as JSONB in a single column
+    # separate_table   -> normalized into its own table with FK
+    choice: native_enum
+    # native_enum      -> CREATE TYPE ... AS ENUM (...) for all-bare choices
+    # check            -> VARCHAR + CHECK constraint
+    # jsonb_column     -> single JSONB column with discriminator for fielded choices
+    # single_table     -> type column + nullable variant columns
+    # separate_tables  -> one table per variant with shared PK
 
     Habitat: check
     # Habitat uses CHECK because it appears in a [Habitat] collection field,

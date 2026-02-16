@@ -53,7 +53,9 @@ These sit on top of two structural primitives for grouping values: `[T]` (collec
 
 Any name used as a field type that is not declared as a shape, choice, or mixin is an **atom**. Atoms are valid — the hub makes no claim about what they resolve to. Target profiles map atoms to concrete types.
 
-Common atoms by convention: `string`, `int`, `float`, `bool`, `text`, `datetime`, `date`, `UUID`, `json`. Domain-specific atoms like `BirdId`, `UserId`, `Email` carry semantic meaning without requiring a hub-level declaration. Target profiles decide how each atom is represented — a transparent type alias, a branded type, a value class, etc.
+Common atoms by convention: `string`, `int`, `float`, `bool`, `text`, `datetime`, `date`, `UUID`, `json`. Domain-specific atoms like `BirdId`, `UserId`, `Email` carry semantic meaning without requiring a hub-level declaration.
+
+Atom resolution is a two-layer target concern. Primitive atoms (`string`, `UUID`, etc.) resolve directly through `type_mappings`. Domain atoms (`BirdId`, `Email`) resolve through `emitters.atoms` to a base type, which then resolves through `type_mappings`. Per-name style overrides in emitters control *representation* (value class, typealias, etc.) on top of the base type.
 
 The hub never warns about unresolved atoms. Atom resolution is a target concern.
 
@@ -127,7 +129,7 @@ Block comments support nesting — each `/*` must be matched by a corresponding 
 
 An optional form declaring the model's logical namespace — a dotted identifier representing its package or module identity. At most one namespace declaration per file.
 
-The namespace is stored in the IR under `meta.namespace`. Generators use it as the default package/module when the satellite doesn't override via `globals.package`. Within the hub, the namespace has no effect on name resolution — names stay flat.
+The namespace is stored in the IR under `meta.namespace`. Generators use it as the default package/module when the satellite's emitter doesn't override via `package:`. Within the hub, the namespace has no effect on name resolution — names stay flat.
 
 Convention: the namespace declaration appears before `(model ...)`, but order is not enforced by the parser.
 
@@ -500,7 +502,7 @@ The validation satellite says *what* constraints exist. The target profile says 
 
 ```yaml
 # In model.kotlin.yaml (target profile)
-generators:
+emitters:
   model:
     package: com.example.model
     validation:

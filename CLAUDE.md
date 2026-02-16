@@ -18,8 +18,6 @@ examples/birdtracker.forma            — Complete example model
 examples/birdtracker.kotlin.yaml      — Example Kotlin target profile
 examples/birdtracker.sql.yaml         — Example SQL target profile
 examples/birdtracker.validate.yaml    — Example validation satellite
-profiles/                             — Base target profiles (universal type mappings per target)
-profiles/kotlin/kotlin-type-mappings.yaml — Kotlin base: primitives + stdlib collection defaults
 CHANGELOG.md                          — Version history
 CONTRIBUTING.md                       — How to contribute target profiles
 ```
@@ -44,7 +42,7 @@ No code to build or test — this repo is a spec, agent skill, and examples.
 | Choices | Discriminated alternatives — enum-like (all bare) or union-like (fielded) | Yes |
 | Mixins | Shared field templates with optional composition | No — inlined into shapes |
 
-**Atoms**: Any name not declared as a shape, choice, or mixin is an atom. Atoms are valid — target profiles map them (`BirdId`, `UserId`, `Email`, `string`, `UUID`, etc.).
+**Atoms**: Any name not declared as a shape, choice, or mixin is an atom. Atoms are valid — target profiles map them. Primitive atoms (`string`, `UUID`) resolve via `type_mappings`. Domain atoms (`BirdId`, `Email`) resolve via `emitters.atoms` to a base type, then through `type_mappings`. Per-name style overrides in emitters control representation (value class, typealias, etc.).
 
 ## Field Syntax
 
@@ -65,7 +63,7 @@ Constraints (`primary_key`, `unique`, `default`) are satellite concerns.
 
 Every declaration is a parenthesized form. Singular forms define one item; plural forms group multiple items.
 
-**Namespace (optional):** `(namespace com.example.foo)` — at most one per file, stored in `meta.namespace`. Generators use it as default package when the satellite's generator doesn't override via `package:`.
+**Namespace (optional):** `(namespace com.example.foo)` — at most one per file, stored in `meta.namespace`. Generators use it as default package when the satellite's emitter doesn't override via `package:`.
 
 **Singular:** `(model ...)`, `(mixin ...)`, `(choice ...)`, `(shape ...)`
 
@@ -97,8 +95,8 @@ When deciding where something belongs, ask: "Does this describe what the data *i
 - Shape/structure → hub (`model.forma`)
 - Primary keys, unique constraints, defaults → target profile satellite
 - Validation rules (format, range, immutability) → `model.validate.yaml` (named contexts)
-- Which validation context to apply → target profile (`generators.<name>.validation.context`)
-- Validation library/annotations → target profile (`generators.<name>.validation.library`)
+- Which validation context to apply → target profile (`emitters.<name>.validation.context`)
+- Validation library/annotations → target profile (`emitters.<name>.validation.library`)
 - Type mappings, collection strategies, serialization, FK naming → target profile
 - Derived types (DTOs like `BirdCreate`, `BirdPatch`) → target layer profile
 - Whether a shape is a table, embedded value, etc. → target profile

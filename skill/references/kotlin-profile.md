@@ -14,10 +14,36 @@ This file does **not** redefine structure. It tells the generator **how** to exp
 target: kotlin
 
 # ──────────────────────────────────────
-# Generators — named output contexts
+# Type mappings (override/extend base)
 # ──────────────────────────────────────
-generators:
+type_mappings:
+  UUID: java.util.UUID
+  string: String
+  text: String
+  int: Int
+  float: Double
+  bool: Boolean
+  datetime: kotlinx.datetime.Instant
+  date: kotlinx.datetime.LocalDate
+  json: kotlinx.serialization.json.JsonElement
+
+# ──────────────────────────────────────
+# Emitters — named output contexts
+# ──────────────────────────────────────
+# Each emitter contains both generation settings (package, immutability,
+# collections, serialization, validation) and concept mapping (default
+# styles + per-name overrides).
+#
+# `atoms:` is a reserved key — shared base type resolution for domain atoms.
+# Named emitters (model:, engine:, etc.) contain per-emitter settings.
+emitters:
+  atoms:
+    BirdId: UUID              # domain atom → base type (resolved via type_mappings)
+    UserId: UUID
+    Email: string
+
   model:
+    # Generation settings
     package: com.example.birdtracker.model   # overrides hub (namespace ...) if set
 
     immutability: full
@@ -55,41 +81,17 @@ generators:
       # Which named validation context from model.validate.yaml to apply.
       # Omit to skip validation annotation generation.
 
-# ──────────────────────────────────────
-# Type mappings (override/extend base)
-# ──────────────────────────────────────
-type_mappings:
-  UUID: java.util.UUID
-  string: String
-  text: String
-  int: Int
-  float: Double
-  bool: Boolean
-  datetime: kotlinx.datetime.Instant
-  date: kotlinx.datetime.LocalDate
-  json: kotlinx.serialization.json.JsonElement
-
-# ──────────────────────────────────────
-# Emitters — per-generator concept mapping
-# ──────────────────────────────────────
-emitters:
-  model:
-    default:
-      shape: data_class
-      # data_class → data class (equals, hashCode, copy, destructuring)
-      # value_class → @JvmInline value class (single-field types only)
-      # class      → regular class
-      # interface  → interface (for multi-platform expect/actual)
-      # bitmask    → @JvmInline value class packing fields into Int/Long
-      choice: enum_class
-      # enum_class       → standard enum class (for all-bare choices)
-      # bitmask          → Int-backed bitmask for combinable flags
-      # sealed_class     → sealed class with data class variants (for fielded choices)
-      # sealed_interface → sealed interface (for multi-inheritance)
-      atom: typealias
-      # typealias   → Kotlin typealias (transparent, no runtime overhead)
-      # value_class → @JvmInline value class (type-safe wrapper, zero allocation)
-      # class       → regular class wrapper
+    shape: data_class
+    # data_class → data class (equals, hashCode, copy, destructuring)
+    # value_class → @JvmInline value class (single-field types only)
+    # class      → regular class
+    # interface  → interface (for multi-platform expect/actual)
+    # bitmask    → @JvmInline value class packing fields into Int/Long
+    choice: enum_class
+    # enum_class       → standard enum class (for all-bare choices)
+    # bitmask          → Int-backed bitmask for combinable flags
+    # sealed_class     → sealed class with data class variants (for fielded choices)
+    # sealed_interface → sealed interface (for multi-inheritance)
 
     # Per-name overrides — generator infers concept type from hub
     Bird:
@@ -124,8 +126,8 @@ emitters:
       style: value_class
     UserId:
       style: value_class
-    # BirdId and UserId become @JvmInline value class wrappers for UUID.
-    # Email uses the default typealias.
+    # BirdId and UserId become @JvmInline value class wrappers for UUID
+    # (base type from atoms:). Email has no style override → typealias.
 
 # ──────────────────────────────────────
 # Interfaces to generate
@@ -244,7 +246,9 @@ data class Observation(
 
 ## Design Notes
 
-**Generators and emitters**: The satellite separates *where* code goes (`generators:`) from *what* each concept becomes (`emitters:`). A single hub shape can appear in multiple generators — e.g., a bitmask for the game engine and a DTO for the API layer. Each generator entry under `emitters:` has a `default:` block for fallback styles and per-name overrides. The generator infers the concept type (shape, choice, or atom) from the hub, so overrides don't need to declare which section they belong to.
+**Unified emitters**: Each named emitter contains both generation settings (*where* and *how* code is produced — package, immutability, collections, serialization, validation) and concept mapping (*what* each concept becomes — default styles and per-name overrides). A single hub shape can appear in multiple emitters — e.g., a bitmask for the game engine and a DTO for the API layer. Each emitter has `shape:` and `choice:` keys for default concept styles, plus per-name overrides. The generator infers the concept type (shape, choice, or atom) from the hub, so overrides don't need to declare which section they belong to.
+
+**Atom resolution**: Domain atoms resolve through a two-layer chain: `emitters.atoms` maps domain atoms to base types (`BirdId: UUID`, `Email: string`), and `type_mappings` maps base types to target-specific types (`UUID: java.util.UUID`, `string: String`). Primitive atoms (like `int`, `string`) go directly through `type_mappings` without needing an `atoms` entry. Per-name style overrides in emitters (e.g., `BirdId: { style: value_class }`) control *how* the atom is represented — they reference the base type from `atoms:`. Atoms without a style override get transparent treatment (typealias in Kotlin, plain column type in SQL).
 
 **Bitmask generation**: When a choice is marked `style: bitmask`, the generator produces a `@JvmInline value class` wrapping an `Int`. This gives type safety (can't accidentally pass a raw `Int` where `HabitatFlags` is expected) with zero runtime allocation overhead — the JVM sees a plain `int` at the call site. Any `[E]` field referencing a bitmask choice collapses to a single value class field. The generator also produces `contains`, `plus`, `minus` operators and `NONE`/`ALL` constants.
 

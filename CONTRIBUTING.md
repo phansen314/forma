@@ -12,9 +12,8 @@ A satellite document for the existing BirdTracker model showing your target's co
 
 **Required sections:**
 - `target:` — target identifier (e.g., `kotlin`, `sql`, `typescript`)
-- `generators:` — named output contexts (package/module, immutability, collections, serialization)
 - `type_mappings:` — how Forma primitives map to target types
-- `emitters:` — per-generator concept mapping (default styles + per-name overrides for shapes, choices, atoms)
+- `emitters:` — contains a reserved `atoms:` sub-section for domain atom → base type mappings, plus named output contexts with generation settings (package, immutability, collections, serialization) and concept mapping (`shape:` and `choice:` keys for default styles + per-name overrides)
 
 **Common optional sections:**
 - `relationships:` — FK naming, join strategies

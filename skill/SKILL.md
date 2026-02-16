@@ -42,7 +42,7 @@ When the user runs `/forma` with arguments, the skill uses structured satellite 
 ### Syntax
 
 ```
-/forma <hub-file> --<target> [satellite-files...] [--no-base] [--validate]
+/forma <hub-file> --<target> [satellite-files...] [--validate]
 ```
 
 | Argument | Required | Description |
@@ -50,7 +50,6 @@ When the user runs `/forma` with arguments, the skill uses structured satellite 
 | `<hub-file>` | Yes | Path to the `.forma` hub file |
 | `--<target>` | Yes | Target language (`--kotlin`, `--sql`, `--typescript`, etc.) |
 | `[satellite-files...]` | No | Explicit satellite file paths, applied after convention-discovered files |
-| `--no-base` | No | Skip auto-loading base profile from `profiles/<target>/` |
 | `--validate` | No | Run atom coverage check instead of code generation |
 
 ### Examples
@@ -70,20 +69,14 @@ When the user runs `/forma` with arguments, the skill uses structured satellite 
 /forma birdtracker.forma --kotlin --validate
 ```
 
-**Skip base profiles (model satellite is fully self-contained):**
-```
-/forma birdtracker.forma --kotlin --no-base
-```
-
 ### Satellite Resolution Order
 
 When `/forma` is invoked, satellites are resolved in this order:
 
 1. **Hub** — parse `<hub-file>`
-2. **Base profile** — auto-load `profiles/<target>/*.yaml` (skip if `--no-base`)
-3. **Convention satellite** — auto-discover `<stem>.<target>.yaml` in the same directory as the hub
-4. **Explicit satellites** — load each `[satellite-files...]` in the order provided
-5. **Layer profiles** — auto-discover `<stem>.<target>.*.yaml` (excluding already-loaded files)
+2. **Convention satellite** — auto-discover `<stem>.<target>.yaml` in the same directory as the hub
+3. **Explicit satellites** — load each `[satellite-files...]` in the order provided
+4. **Layer profiles** — auto-discover `<stem>.<target>.*.yaml` (excluding already-loaded files)
 
 Later documents override earlier ones for conflicting keys. Non-conflicting keys accumulate.
 
@@ -92,19 +85,17 @@ Later documents override earlier ones for conflicting keys. Non-conflicting keys
 | Step | File | Found? |
 |---|---|---|
 | Hub | `examples/birdtracker.forma` | Yes |
-| Base profile | `profiles/kotlin/kotlin-type-mappings.yaml` | Yes |
 | Convention satellite | `examples/birdtracker.kotlin.yaml` | Yes |
 | Explicit satellites | *(none provided)* | — |
 | Layer profiles | `examples/birdtracker.kotlin.*.yaml` | *(none found)* |
 
-**Merged satellite stack (3 files):** base type mappings → model-specific Kotlin profile → hub shapes.
+**Merged satellite stack (2 files):** model-specific Kotlin profile → hub shapes.
 
 **Resolution trace — `/forma examples/birdtracker.forma --sql`:**
 
 | Step | File | Found? |
 |---|---|---|
 | Hub | `examples/birdtracker.forma` | Yes |
-| Base profile | `profiles/sql/*.yaml` | *(none found — no base SQL profile yet)* |
 | Convention satellite | `examples/birdtracker.sql.yaml` | Yes |
 | Explicit satellites | *(none provided)* | — |
 | Layer profiles | `examples/birdtracker.sql.*.yaml` | *(none found)* |
@@ -114,8 +105,6 @@ Later documents override earlier ones for conflicting keys. Non-conflicting keys
 - **Hub stem**: derived from the hub filename by stripping the `.forma` extension. For `birdtracker.forma`, the stem is `birdtracker`.
 - **Convention satellite**: `<stem>.<target>.yaml` in the hub's directory.
 - **Layer profiles**: `<stem>.<target>.*.yaml` in the hub's directory, excluding files already loaded as convention or explicit satellites.
-- **Base profile directory**: `profiles/<target>/` at the project root. All `*.yaml` files in this directory are loaded.
-- **`--no-base`**: Skips step 2 entirely. Useful when the model's convention satellite already includes all type mappings.
 
 ### Processing Modes
 
@@ -123,10 +112,11 @@ Later documents override earlier ones for conflicting keys. Non-conflicting keys
 
 **Validate mode (`--validate`) — atom coverage check:** Instead of generating code, verify that every atom in the hub has a resolution path in the merged satellite stack.
 
-An atom is **covered** if any of these conditions hold:
-1. It appears in `type_mappings` (e.g., `UUID: java.util.UUID`)
-2. It has a per-name entry in `emitters` (e.g., `BirdId: { style: value_class }`)
-3. It falls back to `emitters.<gen>.default.atom` (e.g., `atom: typealias`)
+An atom is **covered** if either of these conditions holds:
+1. It appears in `type_mappings` (primitive atoms — e.g., `UUID: java.util.UUID`)
+2. It appears in `emitters.atoms` (domain atoms — e.g., `BirdId: UUID`)
+
+Per-name style overrides in emitters (e.g., `BirdId: { style: value_class }`) control *representation*, not coverage. An atom must have a base type in one of the two sections above.
 
 **Passing example — `/forma birdtracker.forma --kotlin --validate`:**
 
@@ -140,15 +130,13 @@ Atom coverage: 11/11 covered
   datetime      → type_mappings: kotlinx.datetime.Instant
   json          → type_mappings: kotlinx.serialization.json.JsonElement
   UUID          → type_mappings: java.util.UUID
-  BirdId        → emitter override: value_class
-  UserId        → emitter override: value_class
-  Email         → emitter default atom: typealias  ⚠ (no explicit mapping)
   bool          → type_mappings: Boolean
-
-Warnings: 1 atom(s) relying on emitter default only: Email
+  BirdId        → emitters.atoms: UUID → type_mappings: java.util.UUID
+  UserId        → emitters.atoms: UUID → type_mappings: java.util.UUID
+  Email         → emitters.atoms: string → type_mappings: String
 ```
 
-**Failing example — satellite missing `default.atom` and some type mappings:**
+**Failing example — satellite missing some `emitters.atoms` entries and type mappings:**
 
 ```
 Atom coverage: 8/11 — 3 UNMAPPED
@@ -160,7 +148,7 @@ Atom coverage: 8/11 — 3 UNMAPPED
   datetime      → type_mappings: kotlinx.datetime.Instant
   json          → type_mappings: kotlinx.serialization.json.JsonElement
   UUID          → type_mappings: java.util.UUID
-  BirdId        → emitter override: value_class
+  BirdId        → emitters.atoms: UUID → type_mappings: java.util.UUID
   UserId        → UNMAPPED
   Email         → UNMAPPED
   bool          → UNMAPPED
@@ -303,23 +291,28 @@ A target profile covers these sections (all optional — omit what you don't nee
 ```yaml
 target: <language>
 
-generators:
-  <name>:
-    # Named output context — package/module, immutability, collections, serialization
-
 type_mappings:
   # How each primitive type maps to target language types
 
 emitters:
+  atoms:
+    # Domain atom → base type (resolved via type_mappings)
+    # Shared across all emitters in this satellite
+    BirdId: UUID
+    Email: string
+
   <name>:
-    default:
-      shape: <style>    # Default shape representation (data_class, class, etc.)
-      choice: <style>   # Default choice representation (enum_class, sealed_class, etc.)
-      atom: <style>     # Default atom representation (typealias, value_class, etc.)
+    # Generation settings — package/module, immutability, collections, serialization
+    package: com.example.model
+    immutability: full
+    nullability: strict
+
+    shape: <style>      # Default shape representation (data_class, class, etc.)
+    choice: <style>     # Default choice representation (enum_class, sealed_class, etc.)
 
     # Per-name overrides — generator infers concept type from hub
     # Shapes/choices: use block form with style: and extra keys
-    # Atoms: inline scalar for type mapping (BirdId: int), block for style override
+    # Atoms: use block form for style override (base type from atoms:)
 
 derived_types:
   # Create/update/patch/summary DTOs derived from shapes
@@ -337,7 +330,6 @@ The hub is pure shape. Satellites reference it by shape and field name. Key rule
 - Satellites **never redefine structure** — they add target-specific or behavioral context
 - Each satellite is **independently optional** — the model stands alone
 - Satellites can **stack** — a Kotlin API profile can layer on top of a base Kotlin profile
-- **Base profiles provide defaults** — `profiles/<target>/` contains universal type mappings that form the foundation layer. Model-specific satellites layer on top.
 - The agent loads **only the relevant satellites** for the current task
 
 See `references/satellite-architecture.md` for the full pattern.
