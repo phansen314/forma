@@ -6,21 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Changed
+- **BREAKING**: Removed base profiles (`profiles/` directory), `globals:` key, and `--no-base` flag. Model-specific satellites are self-contained. Satellite merge order simplified from 5 steps to 4: hub → convention satellite → explicit satellites → layer profiles.
+- **BREAKING**: Merged `generators:` section into `emitters:` in target profile satellites. Each named emitter now contains both generation settings (package, immutability, collections, serialization, validation) and concept mapping (default styles + per-name overrides). The `generators:` top-level key is removed. Eliminates the need to look in two places for settings that are always 1:1 keyed by the same name.
+- **BREAKING**: Removed `default.atom` from emitter default blocks. Domain atom base types are now declared in `emitters.atoms` instead. Atoms without per-name style overrides get transparent treatment (typealias in Kotlin, plain column type in SQL).
+- **BREAKING**: Removed `default:` block from emitters. `shape:` and `choice:` are now top-level emitter keys alongside `package:`, `immutability:`, etc. — one less nesting level. No collision with per-name overrides (which use PascalCase).
+
+### Added
+- **`emitters.atoms`** — reserved sub-section within `emitters:` for explicit domain atom → base type resolution. Maps domain atoms like `BirdId`, `Email` to their base types (`UUID`, `string`), which then resolve through `type_mappings` to target-specific types. Shared across all emitters in the satellite. Two-layer resolution chain: `BirdId → emitters.atoms → UUID → type_mappings → java.util.UUID`.
+- Atom coverage validation updated: an atom is covered if it appears in `type_mappings` (primitive) or `emitters.atoms` (domain). Per-name style overrides are representation directives, not coverage.
+- All documentation, examples, and reference docs updated to reflect unified `emitters:` structure
+- `generators.<name>.validation.context` → `emitters.<name>.validation.context`
+- `generators.<name>.validation.library` → `emitters.<name>.validation.library`
+
 ### Added
 - **Named validation contexts** — Validation satellites now organize rules into named contexts (`base`, `api`, `persistence`, etc.) instead of a flat structure. Each context is a self-contained rule set.
   - `extends:` — context inheritance. A child context starts with the parent's rules and overlays its own at field granularity. Unmentioned fields keep the parent's rules.
   - `default:` — per-atom-type fallback rules within a context. "All strings have `max_length: 255`" is expressed as a default. Explicit field rules always override.
   - Reserved keys within a context: `extends:` and `default:`. Everything else is a shape name.
-  - Target profile interaction: `generators.<name>.validation.context` selects which context to apply; `generators.<name>.validation.library` controls how rules become annotations.
+  - Target profile interaction: `emitters.<name>.validation.context` selects which context to apply; `emitters.<name>.validation.library` controls how rules become annotations.
 - **Block comments** — `/* ... */` with nesting support. `/* outer /* inner */ still outer */` is valid. Unterminated block comments are a parse error (E000). Comment delimiters are stripped during lexing (not tokens); token count stays at 12.
-- **Namespace declaration** — `(namespace com.example.foo)` declares a logical package/module identity for the model. Optional, at most one per file, stored in `meta.namespace`. Generators use it as the default package when the satellite doesn't override via `globals.package`.
+- **Namespace declaration** — `(namespace com.example.foo)` declares a logical package/module identity for the model. Optional, at most one per file, stored in `meta.namespace`. Generators use it as the default package when the emitter doesn't override via `package:`.
 - `namespace_form` production added to EBNF grammar
 - Parser: `_parse_namespace()` method, `namespace` keyword dispatch, duplicate detection
 - Validator: accepts optional `namespace` key in `meta` (E004 if present but not a non-empty string)
-- **CLI invocation** — `/forma <hub-file> --<target> [satellite-files...] [--no-base] [--validate]` provides deterministic satellite resolution. Auto-discovers base profiles from `profiles/<target>/`, convention satellites, and layer profiles.
-- **Atom coverage validation** — `--validate` flag checks that every atom in the hub has a resolution path (via `type_mappings`, `atoms.overrides`, or `atoms.default`). Reports unmapped atoms as errors and warns on atoms relying only on `atoms.default`.
-- **Base profiles** — `profiles/<target>/` directory convention for universal type mappings shared across all models targeting a given language. Auto-loaded before model-specific satellites.
-- Satellite merge order expanded from 3 steps to 5: hub → base profile → convention satellite → explicit satellites → layer profiles
+- **CLI invocation** — `/forma <hub-file> --<target> [satellite-files...] [--validate]` provides deterministic satellite resolution. Auto-discovers convention satellites and layer profiles.
+- **Atom coverage validation** — `--validate` flag checks that every atom in the hub has a resolution path (via `type_mappings` or `emitters.atoms`). Reports unmapped atoms as errors.
+- Satellite merge order: hub → convention satellite → explicit satellites → layer profiles
 - Documentation updated: `SPEC.md`, `SKILL.md`, `satellite-architecture.md`, `quick-reference.md`, `kotlin-profile.md`, `CLAUDE.md`
 
 ## [8.0]

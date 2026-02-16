@@ -25,7 +25,7 @@ Satellites are always `.yaml`.
 
 4. **The hub never grows for satellite concerns.** If a feature is target-specific, validation-specific, or deployment-specific, it goes in a satellite. The hub stays small.
 
-5. **Hub namespace serves as default package.** If the hub declares `(namespace com.example.foo)`, generators use it as the default package/module. Satellites can override via the generator's `package:` setting.
+5. **Hub namespace serves as default package.** If the hub declares `(namespace com.example.foo)`, generators use it as the default package/module. Satellites can override via the emitter's `package:` setting.
 
 6. **Constraints belong in satellites.** Primary keys, unique constraints, default values, and relationship cardinality details are satellite concerns — they describe how data is *stored* or *used*, not what it *is*.
 
@@ -39,9 +39,8 @@ Control how the hub maps to a specific language or persistence layer.
 
 | Section | Purpose | Example |
 |---|---|---|
-| `generators` | Named output contexts — package, immutability, collections, serialization | `model: { package: com.example.model }` |
 | `type_mappings` | Primitive → target type | `UUID: java.util.UUID` |
-| `emitters` | Per-generator concept mapping — default styles and per-name overrides for shapes, choices, atoms | `model: { default: { shape: data_class } }` |
+| `emitters` | Named output contexts — generation settings (package, immutability, collections, serialization, validation) and concept mapping (`shape:` and `choice:` keys for default styles + per-name overrides). Contains a reserved `atoms:` sub-section for domain atom → base type mappings shared across all emitters. | `atoms: { BirdId: UUID }`, `model: { package: com.example.model, shape: data_class, choice: enum_class }` |
 | `derived_types` | DTOs derived from shapes | `BirdCreate: { from: Bird, omit: [id] }` |
 | `relationships` | FK naming, join table strategy | `fk_pattern: "{type}_id"` |
 | `interfaces` | Generated interfaces shapes can implement | `Identifiable: { properties: { id: UUID } }` |
@@ -103,7 +102,7 @@ The target profile controls *how* validation rules become code. The validation s
 
 ```yaml
 # In model.kotlin.yaml
-generators:
+emitters:
   model:
     validation:
       library: jakarta-validation
@@ -119,7 +118,7 @@ Override a base target profile for a specific application layer.
 
 layer: api
 
-generators:
+emitters:
   model:
     nullability: lenient           # all fields nullable for partial updates
     serialization: kotlinx-serialization
@@ -148,10 +147,10 @@ The agent loads documents based on the task:
 | Task | Documents loaded |
 |---|---|
 | Review model | Hub only |
-| Generate Kotlin | Hub + `profiles/kotlin/*.yaml` + `model.kotlin.yaml` |
-| Generate Kotlin API DTOs | Hub + `profiles/kotlin/*.yaml` + `model.kotlin.yaml` + `model.kotlin.api.yaml` |
+| Generate Kotlin | Hub + `model.kotlin.yaml` |
+| Generate Kotlin API DTOs | Hub + `model.kotlin.yaml` + `model.kotlin.api.yaml` |
 | Add validation | Hub + `model.validate.yaml` |
-| Generate SQL DDL | Hub + `profiles/sql/*.yaml` + `model.sql.yaml` |
+| Generate SQL DDL | Hub + `model.sql.yaml` |
 | Validate atom coverage | Hub + satellite stack (same as generation) — check, don't generate |
 
 ### Merge Order
@@ -159,12 +158,9 @@ The agent loads documents based on the task:
 When multiple satellites apply, they merge in specificity order:
 
 1. **Hub** (`model.forma`) — structural truth
-2. **Base profile** (`profiles/<target>/*.yaml`) — universal type mappings and collection defaults for the target language
-3. **Convention satellite** (`model.<target>.yaml`) — model-specific target profile discovered by naming convention
-4. **Explicit satellites** — additional satellite files provided directly (e.g., via CLI arguments)
-5. **Layer profiles** (`model.<target>.*.yaml`) — layer-specific overrides (API, persistence, etc.)
-
-Base profiles provide universal mappings that apply to any model targeting that language — primitive type mappings, standard collection defaults, and common library imports. Model-specific satellites layer on top with generator settings, emitter overrides, and derived types.
+2. **Convention satellite** (`model.<target>.yaml`) — model-specific target profile discovered by naming convention
+3. **Explicit satellites** — additional satellite files provided directly (e.g., via CLI arguments)
+4. **Layer profiles** (`model.<target>.*.yaml`) — layer-specific overrides (API, persistence, etc.)
 
 Later documents override earlier ones for conflicting keys. Non-conflicting keys accumulate.
 
@@ -178,17 +174,3 @@ When a user needs a new satellite type, follow this pattern:
 4. Document what each section controls and what the defaults are
 5. Include an example showing the satellite in action alongside the hub
 
-### Base Profiles
-
-The `profiles/<target>/` directory contains base satellite files that provide universal mappings for a target language. These are loaded automatically before model-specific satellites.
-
-**What base profiles contain:**
-- `type_mappings` — primitive atom → target type (e.g., `UUID: java.util.UUID`)
-- Default collection and association types (e.g., `collection: List`)
-
-**What base profiles do NOT contain:**
-- Generator `package:` — model-specific, belongs in the model's satellite
-- Emitter overrides — model-specific
-- `derived_types` / `relationships` — model-specific
-
-Base profiles are designed to be shared across all models targeting the same language. Use `--no-base` (in CLI invocation) to skip loading them when a model's satellite is fully self-contained.

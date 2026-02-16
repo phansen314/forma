@@ -165,7 +165,6 @@ Reserved keys in a context: `extends:`, `default:`. Everything else is a shape n
 
 ```
 model.forma                  ← Structure (hub)
-profiles/kotlin/*.yaml       ← Base Kotlin mappings (auto-loaded)
 model.validate.yaml          ← Validation rules (satellite)
 model.kotlin.yaml            ← Kotlin target profile (satellite)
 model.kotlin.api.yaml        ← Kotlin API layer overrides (satellite)
@@ -175,9 +174,9 @@ model.sql.yaml               ← SQL target profile (satellite)
 ## CLI Invocation
 
 ```
-/forma <hub-file> --<target> [satellite-files...] [--no-base] [--validate]
+/forma <hub-file> --<target> [satellite-files...] [--validate]
 ```
 
-Merge order: hub → `profiles/<target>/*.yaml` → `<stem>.<target>.yaml` → explicit satellites → `<stem>.<target>.*.yaml` layers.
+Merge order: hub → `<stem>.<target>.yaml` → explicit satellites → `<stem>.<target>.*.yaml` layers.
 
 See `skill/SKILL.md` § CLI Invocation for full resolution rules and examples.

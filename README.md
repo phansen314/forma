@@ -82,14 +82,18 @@ Create a `model.kotlin.yaml`:
 ```yaml
 target: kotlin
 
-globals:
-  package: com.example.myapp.model
-  immutability: full
-  serialization: kotlinx-serialization
-
 type_mappings:
+  string: String
   UUID: java.util.UUID
   datetime: kotlinx.datetime.Instant
+
+emitters:
+  model:
+    package: com.example.myapp.model
+    immutability: full
+    serialization: kotlinx-serialization
+    shape: data_class
+    choice: enum_class
 ```
 
 ### 3. Generate
@@ -116,8 +120,6 @@ forma/
 │   ├── birdtracker.kotlin.yaml         # Example Kotlin target profile
 │   ├── birdtracker.sql.yaml            # Example SQL target profile
 │   └── birdtracker.validate.yaml       # Example validation satellite
-├── profiles/
-│   └── (community target profiles)
 ├── CHANGELOG.md                        # Version history
 └── CONTRIBUTING.md                     # How to contribute target profiles
 ```
