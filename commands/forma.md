@@ -38,7 +38,6 @@ The forma repo root is the parent of the `commands/` directory containing this f
 | Generate code via CLI | Parse `/forma` arguments → resolve satellites → generate target code |
 | Validate atom coverage | Parse `/forma --validate` arguments → resolve satellites → check coverage |
 | Create a target profile | Read `references/satellite-architecture.md` + example profile → draft profile |
-| Add validation rules | Create `model.validate.yaml` with named contexts referencing hub shapes |
 | Refine an existing model | Load → apply enrichment pipeline → propose changes with rationale |
 | Validate a hub file | Run `python tools/validate.py model.forma` → fix errors → re-validate |
 
@@ -305,11 +304,10 @@ Targets infer cardinality from cross-references:
 
 ## Satellite Architecture Essentials
 
-The hub (`model.forma`) describes what the data *is* — pure shape. Satellite documents describe how the data is *used*, *validated*, or *represented* in specific contexts.
+The hub (`model.forma`) describes what the data *is* — pure shape. Satellite documents describe how the data is *used* or *represented* in specific contexts.
 
 ```
 model.forma               ← Hub: structure, shapes, references
-├── model.validate.yaml   ← Satellite: validation rules
 ├── model.kotlin.yaml     ← Satellite: Kotlin generation profile
 ├── model.sql.yaml        ← Satellite: SQL generation profile
 └── model.kotlin.api.yaml ← Satellite: Kotlin API layer overrides
@@ -320,7 +318,7 @@ model.forma               ← Hub: structure, shapes, references
 1. **Satellites reference the hub by name.** They use shape names, field names, and choice names from the hub. They never redefine structural elements.
 2. **Satellites are independently optional.** The hub is self-contained. Any satellite can be absent without invalidating the model.
 3. **Satellites can stack.** A base Kotlin profile might set global immutability. A Kotlin API profile layers on serialization and DTOs. The agent merges them in order.
-4. **The hub never grows for satellite concerns.** Target-specific, validation-specific, or deployment-specific features go in satellites.
+4. **The hub never grows for satellite concerns.** Target-specific or deployment-specific features go in satellites.
 5. **Hub namespace serves as default package.** If the hub declares `(namespace com.example.foo)`, generators use it as default. Satellites override via `package:`.
 6. **Constraints belong in satellites.** Primary keys, unique constraints, default values, and relationship details are satellite concerns.
 
@@ -332,33 +330,6 @@ model.forma               ← Hub: structure, shapes, references
 4. **Layer profiles** (`model.<target>.*.yaml`) — layer-specific overrides
 
 Later documents override earlier ones for conflicting keys. Non-conflicting keys accumulate.
-
-### Validation Satellite
-
-Named contexts with optional inheritance and atom-type defaults:
-
-```yaml
-validations:
-  base:
-    default:
-      string: [max_length: 10000]
-      datetime: [immutable]
-    User:
-      email: [format: email]
-      username: [min_length: 3, max_length: 50]
-  api:
-    extends: base
-    default:
-      string: [max_length: 50000]
-  persistence:
-    extends: base
-    default:
-      string: [max_length: 255]
-```
-
-Reserved keys in a context: `extends:`, `default:`. Everything else is a shape name.
-
-For the full satellite document pattern, read `references/satellite-architecture.md`.
 
 ---
 
@@ -545,7 +516,7 @@ relationships:
 
 The hub is pure shape. Satellites reference it by shape and field name. Key rules:
 
-- Satellites **never redefine structure** — they add target-specific or behavioral context
+- Satellites **never redefine structure** — they add target-specific context
 - Each satellite is **independently optional** — the model stands alone
 - Satellites can **stack** — a Kotlin API profile can layer on top of a base Kotlin profile
 - The agent loads **only the relevant satellites** for the current task

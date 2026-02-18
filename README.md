@@ -23,7 +23,7 @@ Forma is a language-agnostic data model definition format designed for agent-ass
 
 ## Design Philosophy
 
-**Structure, not validation.** The core spec describes what data *is* — types, fields, references. How it's validated, serialized, or stored is handled by satellite documents.
+**Structure, not behavior.** The core spec describes what data *is* — types, fields, references. How it's serialized or stored is handled by satellite documents.
 
 **Minimal boilerplate.** Non-null by default (`?` opts in to nullable). Every field is just `name: type`. S-expression syntax keeps declarations clean and uniform.
 
@@ -31,7 +31,6 @@ Forma is a language-agnostic data model definition format designed for agent-ass
 
 ```
 model.forma             ← What the data is (hub)
-model.validate.yaml     ← How it's validated (satellite)
 model.kotlin.yaml       ← How it maps to Kotlin (satellite)
 model.sql.yaml          ← How it maps to SQL (satellite)
 ```
@@ -39,7 +38,6 @@ model.sql.yaml          ← How it maps to SQL (satellite)
 ```mermaid
 flowchart LR
     HUB[model.forma] --> GEN[Agent + Generator]
-    VAL[model.validate.yaml] -.-> GEN
     TGT[model.kotlin.yaml<br/>model.sql.yaml<br/>...] -.-> GEN
     GEN --> OUT[Kotlin / SQL / TypeScript / ...]
 ```
@@ -118,8 +116,7 @@ forma/
 ├── examples/
 │   ├── birdtracker.forma               # Complete example model
 │   ├── birdtracker.kotlin.yaml         # Example Kotlin target profile
-│   ├── birdtracker.sql.yaml            # Example SQL target profile
-│   └── birdtracker.validate.yaml       # Example validation satellite
+│   └── birdtracker.sql.yaml            # Example SQL target profile
 ├── CHANGELOG.md                        # Version history
 └── CONTRIBUTING.md                     # How to contribute target profiles
 ```
@@ -140,7 +137,7 @@ forma/
 - **Structural primitives**: `[T]` (collection), `{K, V}` (association) — shorthand for `coll<T>`, `dict<K, V>`
 - **Angle-bracket generics**: `tree<T>`, `Versioned<Bird>` — unified type parameterization + named wrappers via target profiles
 - **References as fields**: `bird: Bird`, `observations: [Observation]` — targets infer cardinality
-- **Satellite architecture**: Validation, target profiles, and layer overrides in separate files
+- **Satellite architecture**: Target profiles and layer overrides in separate files
 
 ## Using the Custom Command
 

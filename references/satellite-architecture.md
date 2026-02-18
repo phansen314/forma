@@ -2,11 +2,10 @@
 
 ## Concept
 
-The data model system uses a hub-and-satellite document architecture. The hub (`model.forma`) describes what the data *is* — pure shape. Satellite documents describe how the data is *used*, *validated*, or *represented* in specific contexts.
+The data model system uses a hub-and-satellite document architecture. The hub (`model.forma`) describes what the data *is* — pure shape. Satellite documents describe how the data is *used* or *represented* in specific contexts.
 
 ```
 model.forma               ← Hub: structure, shapes, references (.forma recommended)
-├── model.validate.yaml   ← Satellite: validation rules
 ├── model.kotlin.yaml     ← Satellite: Kotlin generation profile
 ├── model.typescript.yaml ← Satellite: TypeScript generation profile
 ├── model.sql.yaml        ← Satellite: SQL generation profile
@@ -23,7 +22,7 @@ Satellites are always `.yaml`.
 
 3. **Satellites can stack.** A base Kotlin profile might set global immutability and collection strategy. A Kotlin API profile layers on serialization annotations and derived DTOs. The agent merges them in order.
 
-4. **The hub never grows for satellite concerns.** If a feature is target-specific, validation-specific, or deployment-specific, it goes in a satellite. The hub stays small.
+4. **The hub never grows for satellite concerns.** If a feature is target-specific or deployment-specific, it goes in a satellite. The hub stays small.
 
 5. **Hub namespace serves as default package.** If the hub declares `(namespace com.example.foo)`, generators use it as the default package/module. Satellites can override via the emitter's `package:` setting.
 
@@ -40,74 +39,10 @@ Control how the hub maps to a specific language or persistence layer.
 | Section | Purpose | Example |
 |---|---|---|
 | `type_mappings` | Primitive → target type | `UUID: java.util.UUID` |
-| `emitters` | Named output contexts — generation settings (package, immutability, collections, serialization, validation) and concept mapping (`shape:` and `choice:` keys for default styles + per-name overrides). Contains a reserved `atoms:` sub-section for domain atom → base type mappings shared across all emitters. | `atoms: { BirdId: UUID }`, `model: { package: com.example.model, shape: data_class, choice: enum_class }` |
+| `emitters` | Named output contexts — generation settings (package, immutability, collections, serialization) and concept mapping (`shape:` and `choice:` keys for default styles + per-name overrides). Contains a reserved `atoms:` sub-section for domain atom → base type mappings shared across all emitters. | `atoms: { BirdId: UUID }`, `model: { package: com.example.model, shape: data_class, choice: enum_class }` |
 | `derived_types` | DTOs derived from shapes | `BirdCreate: { from: Bird, omit: [id] }` |
 | `relationships` | FK naming, join table strategy | `fk_pattern: "{type}_id"` |
 | `interfaces` | Generated interfaces shapes can implement | `Identifiable: { properties: { id: UUID } }` |
-
-### Validation Profiles (`model.validate.yaml`)
-
-Define behavioral rules that reference the hub's shapes. Rules are organized into named contexts — each context is a self-contained rule set for a specific use case.
-
-```yaml
-validations:
-  <context-name>:
-    extends: <other-context>     # optional — inherit rules from another context
-    default:                      # optional — per-atom-type fallback rules
-      <atom-type>:
-        - <rule>
-    <ShapeName>:
-      <field>:
-        - <rule>
-```
-
-**Reserved keys** within a context: `extends:` and `default:`. Everything else is a shape name.
-
-**`default:`** provides per-atom-type fallback rules. Fields with explicit rules override their type's default.
-
-**`extends:`** inherits rules from another context. Child rules override at field granularity — if the child defines rules for `User.email`, they replace the parent's entirely. Unmentioned fields keep the parent's rules.
-
-```yaml
-validations:
-  base:
-    default:
-      string:
-        - max_length: 10000
-      datetime:
-        - immutable
-    User:
-      email:
-        - format: email
-      username:
-        - min_length: 3
-        - max_length: 50
-
-  api:
-    extends: base
-    default:
-      string:
-        - max_length: 50000       # relax for API input
-
-  persistence:
-    extends: base
-    default:
-      string:
-        - max_length: 255         # tighten for DB columns
-    User:
-      email:
-        - max_length: 320         # override base's email rules
-```
-
-The target profile controls *how* validation rules become code. The validation satellite says *what* constraints exist:
-
-```yaml
-# In model.kotlin.yaml
-emitters:
-  model:
-    validation:
-      library: jakarta-validation
-      context: api                # which validation context to apply
-```
 
 ### Layer Profiles (`model.{target}.{layer}.yaml`)
 
@@ -149,7 +84,6 @@ The agent loads documents based on the task:
 | Review model | Hub only |
 | Generate Kotlin | Hub + `model.kotlin.yaml` |
 | Generate Kotlin API DTOs | Hub + `model.kotlin.yaml` + `model.kotlin.api.yaml` |
-| Add validation | Hub + `model.validate.yaml` |
 | Generate SQL DDL | Hub + `model.sql.yaml` |
 | Validate atom coverage | Hub + satellite stack (same as generation) — check, don't generate |
 
@@ -168,7 +102,7 @@ Later documents override earlier ones for conflicting keys. Non-conflicting keys
 
 When a user needs a new satellite type, follow this pattern:
 
-1. Identify what concern the satellite addresses (target, validation, deployment, etc.)
+1. Identify what concern the satellite addresses (target, deployment, etc.)
 2. Choose a naming convention consistent with existing satellites
 3. Structure the satellite to reference hub elements by name
 4. Document what each section controls and what the defaults are

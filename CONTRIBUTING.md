@@ -46,7 +46,7 @@ Add your new files to the repo structure blocks in both files.
 ## Style Guidelines
 
 ### YAML files
-- Header comment block: model name, "Target Profile" or "Validation Satellite", satellite reference
+- Header comment block: model name, "Target Profile", satellite reference
 - Match the comment style of existing examples (see `birdtracker.kotlin.yaml`)
 - Use inline comments to explain non-obvious choices
 - All shape/field names must match `birdtracker.forma` exactly
@@ -78,4 +78,4 @@ Add your new files to the repo structure blocks in both files.
 
 ## Questions?
 
-Open an issue. For design discussions about where something belongs (hub vs. satellite, structure vs. validation), reference the decision boundary in `CLAUDE.md` under "Key Decision Boundaries."
+Open an issue. For design discussions about where something belongs (hub vs. satellite), reference the decision boundary in `CLAUDE.md` under "Key Decision Boundaries."

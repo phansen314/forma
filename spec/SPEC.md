@@ -6,11 +6,11 @@ A format for defining data models that agents can parse, refine, and convert int
 
 The hub format is **`.forma`** — a custom DSL using S-expression syntax. Every declaration is a parenthesized form: `(keyword name ...body...)`.
 
-Satellite documents (validation, target profiles) are YAML.
+Satellite documents (target profiles) are YAML.
 
 ## Design Principles
 
-- **Structure, not validation**: This spec describes the *shape* of data — shapes, fields, and references. Behavioral rules (format validation, range checks, immutability) belong in a validation satellite document.
+- **Structure, not behavior**: This spec describes the *shape* of data — shapes, fields, and references. Structural constraints (primary keys, unique, defaults) belong in satellites.
 - **Pure shape in the hub**: The hub describes *what data is*. Constraints (`primary_key`, `unique`, `default`), relationship cardinality declarations, and foreign key derivation are satellite concerns — they describe how data is *used* or *stored*.
 - **Minimal boilerplate**: The common case should be short; verbosity only when expressing complex constraints
 - **Agent-friendly**: Semi-structured enough for agents to parse and infer meaning, constrained enough to validate
@@ -25,13 +25,12 @@ The data model is defined across multiple focused documents. The hub (`.forma`) 
 
 ```
 model.forma              ← Structure (hub): shapes, fields, references
-model.validate.yaml      ← Validation: format rules, range checks, identity, constraints
 model.kotlin.yaml        ← Kotlin target profile: collections, immutability
 model.typescript.yaml    ← TypeScript target profile: Zod vs io-ts, ESM vs CJS
 model.sql.yaml           ← SQL target profile: dialect, indexing strategy, PK/FK/unique
 ```
 
-Each satellite document references shapes and fields from the hub by name. The agent loads whichever documents are relevant to the current task — generating Kotlin code pulls in the hub + `model.kotlin.yaml`; adding validation pulls in the hub + `model.validate.yaml`.
+Each satellite document references shapes and fields from the hub by name. The agent loads whichever documents are relevant to the current task — generating Kotlin code pulls in the hub + `model.kotlin.yaml`.
 
 This keeps each file small and single-purpose. The hub never grows to accommodate satellite concerns.
 
@@ -407,108 +406,10 @@ The hub is pure shape. These concerns belong in satellites:
 | Concern | Satellite | Example |
 |---------|-----------|---------|
 | Primary keys | Target profile | `User: { primary_key: id }` |
-| Unique constraints | Target profile or validation | `User: { unique: [username, email] }` |
-| Default values | Target profile or validation | `Observation: { defaults: { count: 1 } }` |
+| Unique constraints | Target profile | `User: { unique: [username, email] }` |
+| Default values | Target profile | `Observation: { defaults: { count: 1 } }` |
 | FK column naming | Target profile | `fk_pattern: "{field}_id"` |
 | Join table strategy | Target profile | `many_to_many: auto_join_table` |
-| Format validation | Validation satellite | `email: [format: email]` |
-| Range checks | Validation satellite | `wingspan_cm: [min: 1, max: 500]` |
-| Immutability | Validation satellite | `created_at: [immutable]` |
-
----
-
-## Validation Satellite
-
-The validation satellite (`model.validate.yaml`) defines behavioral rules — format checks, range constraints, immutability — that reference shapes and fields from the hub. Rules are target-independent: `format: email` means the same thing whether emitted as a Jakarta `@Email` annotation, a Zod `.email()`, or a SQL `CHECK`.
-
-### Named Contexts
-
-Validation rules are organized into named contexts. Each context is a self-contained rule set for a specific use case — API input validation, database persistence, frontend display, etc.
-
-```yaml
-validations:
-  <context-name>:
-    extends: <other-context>     # optional — inherit rules from another context
-    default:                      # optional — per-atom-type fallback rules
-      <atom-type>:
-        - <rule>
-    <ShapeName>:
-      <field>:
-        - <rule>
-```
-
-Reserved keys within a context: `extends:` and `default:`. Everything else is a shape name from the hub.
-
-### `default:` — Atom-Type Fallbacks
-
-The `default:` block provides per-atom-type fallback rules. If a field's type matches an atom in `default:` and the field has no explicit rules, the default rules apply.
-
-```yaml
-validations:
-  base:
-    default:
-      string:
-        - max_length: 10000       # all string fields default to max 10000
-      datetime:
-        - immutable               # all datetime fields default to immutable
-```
-
-Defaults are keyed by atom type because validation operates at the field level, and fields have types. "All strings have max_length 255" is a real DB constraint. Explicit field rules always override the type default — if `User.username` has its own rules, the `string` default does not apply to it.
-
-### `extends:` — Context Inheritance
-
-A context can inherit from another context using `extends:`. The child starts with all of the parent's rules and overlays its own.
-
-```yaml
-validations:
-  base:
-    default:
-      string:
-        - max_length: 10000
-    User:
-      email:
-        - format: email
-      username:
-        - min_length: 3
-        - max_length: 50
-
-  api:
-    extends: base
-    default:
-      string:
-        - max_length: 50000       # relax string limits for API input
-
-  persistence:
-    extends: base
-    default:
-      string:
-        - max_length: 255         # tighten string limits for DB columns
-    User:
-      email:
-        - max_length: 320         # override base's email rules entirely
-```
-
-### Merge Semantics
-
-1. **`extends:` resolution**: Start with the parent's rules. Overlay the child's rules at field granularity — if the child defines any rules for `User.email`, they replace the parent's rules for that field entirely. Unmentioned fields keep the parent's rules.
-
-2. **`default:` application**: After extension, `default:` fills in rules for fields that have no explicit entry. If a field's atom type has a default and the field has no explicit rules (from this context or an inherited parent), the default applies. Explicit rules always win.
-
-3. **Layer stacking**: `model.validate.api.yaml` can add or override rules in the `api` context from `model.validate.yaml`. Same merge model as target profiles — later documents override earlier ones for conflicting keys.
-
-### Interaction with Target Profiles
-
-The validation satellite says *what* constraints exist. The target profile says *how* to implement them. Validation library settings live in the generator, not the validation satellite:
-
-```yaml
-# In model.kotlin.yaml (target profile)
-emitters:
-  model:
-    package: com.example.model
-    validation:
-      library: jakarta-validation   # how to emit validation code
-      context: api                  # which validation context to apply
-```
 
 ---
 
@@ -518,7 +419,6 @@ emitters:
 flowchart LR
     subgraph Input
         HUB[model.forma<br/>Hub: structure]
-        VAL[model.validate.yaml<br/>Validation rules]
         TGT[model.target.yaml<br/>Target profile]
         LYR[model.target.layer.yaml<br/>Layer overrides]
     end
@@ -538,7 +438,6 @@ flowchart LR
     OUT[Generated Output<br/>Code / DDL / Schema]
 
     HUB --> S1
-    VAL -.-> S2
     S1 --> S2
     S2 --> S3
     TGT -.-> S3
@@ -704,7 +603,7 @@ The agent reads the finalized IR alongside the relevant target profile(s) and ge
 | Area | v3 | v4 | Rationale |
 |------|----|----|-----------|
 | **Hub format** | YAML only | `.forma` DSL | ~20% fewer lines, zero scaffolding — every line in a type is `name: type` |
-| **Constraints** | `primary_key`, `unique`, `default` in hub fields | Moved to satellites | Hub is pure shape; identity and constraints are target/validation concerns |
+| **Constraints** | `primary_key`, `unique`, `default` in hub fields | Moved to satellites | Hub is pure shape; identity and constraints are target concerns |
 | **Relationships** | Explicit `relationships:` section with `target:` and `cardinality:` | References as plain field types | `[Observation]` is sufficient — targets infer cardinality from cross-references |
 | **Field syntax** | Simple (`name: type`) and constrained (`name: [type, constraint]`) | Simple only (`name: type`) | Constrained form was only needed for hub constraints, which are now in satellites |
 | **Type sub-keys** | `use:`, `fields:`, `relationships:` | `use:`, `fields:` | `relationships:` removed since references are fields |
@@ -734,5 +633,5 @@ The agent reads the finalized IR alongside the relevant target profile(s) and ge
 | **Meta block** | Not present | `meta:` with name/version | Identity and versioning |
 | **Agent enrichment** | One bullet list | Detailed task table + contract | Core differentiator deserves specificity |
 | **Type/constraint mappings** | In core spec | Moved to target profiles | Target-specific concerns don't belong in structural spec |
-| **Document architecture** | Single file | Hub + satellite files | Keeps core small; validation, target, and deployment concerns live in separate docs |
-| **Scope** | Implicit | Structure only; validation is separate | Keeps spec focused and small |
+| **Document architecture** | Single file | Hub + satellite files | Keeps core small; target and deployment concerns live in separate docs |
+| **Scope** | Implicit | Structure only; target-specific concerns are separate | Keeps spec focused and small |
