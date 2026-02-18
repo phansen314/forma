@@ -11,23 +11,26 @@ spec/SPEC.md                          — Core format specification (source of t
 commands/forma.md                     — Distributable custom command for Claude Code
 tools/validate.py                     — Bundled hub model validator (Python, .forma only)
 tools/forma_parser.py                 — .forma DSL parser (Python)
+tools/test_forma.py                   — Tests for parser and validator
 references/satellite-architecture.md  — Hub-and-satellite document pattern
 references/kotlin-profile.md          — Kotlin target profile documentation
 references/sql-profile.md            — SQL target profile documentation
 examples/birdtracker.forma            — Complete example model
 examples/birdtracker.kotlin.yaml      — Example Kotlin target profile
 examples/birdtracker.sql.yaml         — Example SQL target profile
-examples/birdtracker.validate.yaml    — Example validation satellite
+examples/wingspan.forma               — Wingspan board game example model
+examples/wingspan.kotlin.yaml         — Wingspan Kotlin target profile
 CHANGELOG.md                          — Version history
 CONTRIBUTING.md                       — How to contribute target profiles
+README.md                             — Repo readme
 ```
 
-No code to build or test — this repo is a spec, command, and examples.
+No build system — this repo is a spec, command, examples, and supporting tools.
 
 ## Core Design Principles
 
-- **Structure, not validation.** The hub describes what data *is* (shapes, fields). Behavioral rules (format checks, range constraints, immutability) and structural constraints (primary keys, unique, defaults) belong in satellites.
-- **Hub-and-satellite architecture.** `model.forma` is the hub (pure shape). Satellites (`model.validate.yaml`, `model.kotlin.yaml`, etc.) add target-specific or behavioral context. Satellites reference the hub by name, never redefine structure. The hub never grows for satellite concerns.
+- **Structure, not behavior.** The hub describes what data *is* (shapes, fields). Structural constraints (primary keys, unique, defaults) belong in satellites.
+- **Hub-and-satellite architecture.** `model.forma` is the hub (pure shape). Satellites (`model.kotlin.yaml`, `model.sql.yaml`, etc.) add target-specific context. Satellites reference the hub by name, never redefine structure. The hub never grows for satellite concerns.
 - **Non-null by default.** Append `?` to opt into nullable. No `required` keyword.
 - **Mixins over inheritance.** Shared fields use `mixins` + `[MixinName]`, not class inheritance. Mixins are field templates with optional composition, not standalone types.
 - **Structural primitives over behavioral wrappers.** `[T]` (collection) and `{K, V}` (association) describe shape without implying ordering, uniqueness, or lookup behavior. Target profiles decide the concrete type.
@@ -75,7 +78,6 @@ Singular and plural forms can be mixed freely in the same file.
 
 ```
 model.forma                — Hub: structure
-model.validate.yaml        — Validation rules
 model.{target}.yaml        — Target profile (e.g., model.kotlin.yaml)
 model.{target}.{layer}.yaml — Layer override (e.g., model.kotlin.api.yaml)
 ```
@@ -94,9 +96,6 @@ When deciding where something belongs, ask: "Does this describe what the data *i
 
 - Shape/structure → hub (`model.forma`)
 - Primary keys, unique constraints, defaults → target profile satellite
-- Validation rules (format, range, immutability) → `model.validate.yaml` (named contexts)
-- Which validation context to apply → target profile (`emitters.<name>.validation.context`)
-- Validation library/annotations → target profile (`emitters.<name>.validation.library`)
 - Type mappings, collection strategies, serialization, FK naming → target profile
 - Derived types (DTOs like `BirdCreate`, `BirdPatch`) → target layer profile
 - Whether a shape is a table, embedded value, etc. → target profile
