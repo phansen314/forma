@@ -8,12 +8,12 @@ A data model definition format. Define the shape of your data once in a `.forma`
 
 ```
 spec/SPEC.md                          — Core format specification (source of truth)
-skill/SKILL.md                        — Agent skill: task workflows for defining/generating/reviewing models
-skill/references/quick-reference.md   — One-page syntax cheat sheet
-skill/references/satellite-architecture.md — Hub-and-satellite document pattern
-skill/references/kotlin-profile.md    — Kotlin target profile documentation
-skill/tools/validate.py               — Bundled hub model validator (Python, .forma only)
-skill/tools/forma_parser.py           — .forma DSL parser (Python)
+commands/forma.md                     — Distributable custom command for Claude Code
+tools/validate.py                     — Bundled hub model validator (Python, .forma only)
+tools/forma_parser.py                 — .forma DSL parser (Python)
+references/satellite-architecture.md  — Hub-and-satellite document pattern
+references/kotlin-profile.md          — Kotlin target profile documentation
+references/sql-profile.md            — SQL target profile documentation
 examples/birdtracker.forma            — Complete example model
 examples/birdtracker.kotlin.yaml      — Example Kotlin target profile
 examples/birdtracker.sql.yaml         — Example SQL target profile
@@ -22,7 +22,7 @@ CHANGELOG.md                          — Version history
 CONTRIBUTING.md                       — How to contribute target profiles
 ```
 
-No code to build or test — this repo is a spec, agent skill, and examples.
+No code to build or test — this repo is a spec, command, and examples.
 
 ## Core Design Principles
 
@@ -80,7 +80,7 @@ model.{target}.yaml        — Target profile (e.g., model.kotlin.yaml)
 model.{target}.{layer}.yaml — Layer override (e.g., model.kotlin.api.yaml)
 ```
 
-**CLI invocation**: `/forma model.forma --<target> [satellite-files...]` — see `skill/SKILL.md`.
+**CLI invocation**: `/forma model.forma --<target> [satellite-files...]` — see `commands/forma.md`.
 
 ## Naming Conventions
 

@@ -9,7 +9,7 @@ Validates a Forma hub model (.forma) against the spec:
   - Mixin composition (transitive expansion, cycle detection)
 
 Usage:
-    python skill/tools/validate.py <model.forma>
+    python tools/validate.py <model.forma>
 
 Exit codes:
     0  Valid (warnings are OK)
@@ -20,6 +20,14 @@ Exit codes:
 import re
 import sys
 from pathlib import Path
+
+# Ensure the tools directory is on sys.path so forma_parser can be imported
+# regardless of the working directory.
+_TOOLS_DIR = str(Path(__file__).resolve().parent)
+if _TOOLS_DIR not in sys.path:
+    sys.path.insert(0, _TOOLS_DIR)
+
+from forma_parser import parse_forma_file, LexError, ParseError
 
 
 # ---------------------------------------------------------------------------
@@ -164,7 +172,7 @@ class ModelValidator:
             for arg in args:
                 arg = arg.strip()
                 if arg.endswith("?"):
-                    self._warn("W019", f"nullable element type \"{arg}\" inside wrapper \"{wrapper_name}\" — nullable collection elements are discouraged", location)
+                    self._warn("W019", f"nullable element type \"{arg}\" inside collection — nullable collection elements are discouraged", location)
                 self._resolve_type(arg, location)
             return True
 
@@ -658,7 +666,7 @@ def _section_keys(data: dict, section: str) -> list[str]:
 
 def main():
     if len(sys.argv) != 2:
-        print("Usage: python skill/tools/validate.py <model.forma>", file=sys.stderr)
+        print("Usage: python tools/validate.py <model.forma>", file=sys.stderr)
         sys.exit(2)
 
     path = Path(sys.argv[1])
@@ -673,7 +681,6 @@ def main():
     print(f"Validating {path} ...")
     print()
 
-    from forma_parser import parse_forma_file, LexError, ParseError
     try:
         data = parse_forma_file(path)
     except (LexError, ParseError) as e:

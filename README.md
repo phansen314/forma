@@ -106,15 +106,15 @@ Give both files to an agent with the Forma skill. It reads the model + profile a
 forma/
 ├── spec/
 │   └── SPEC.md                         # Core format specification
-├── skill/
-│   ├── SKILL.md                        # Agent skill — task workflows
-│   ├── references/
-│   │   ├── quick-reference.md          # One-page syntax cheat sheet
-│   │   ├── satellite-architecture.md   # Hub-and-satellite pattern
-│   │   └── kotlin-profile.md           # Kotlin target profile docs
-│   └── tools/
-│       ├── validate.py                 # Hub model validator
-│       └── forma_parser.py            # .forma DSL parser
+├── commands/
+│   └── forma.md                        # Distributable custom command for Claude Code
+├── tools/
+│   ├── validate.py                     # Hub model validator
+│   └── forma_parser.py                # .forma DSL parser
+├── references/
+│   ├── satellite-architecture.md       # Hub-and-satellite pattern
+│   ├── kotlin-profile.md              # Kotlin target profile docs
+│   └── sql-profile.md                 # SQL target profile docs
 ├── examples/
 │   ├── birdtracker.forma               # Complete example model
 │   ├── birdtracker.kotlin.yaml         # Example Kotlin target profile
@@ -127,7 +127,7 @@ forma/
 ### Key Files
 
 - **[`spec/SPEC.md`](spec/SPEC.md)** — The full format specification. Read this to understand every feature.
-- **[`skill/SKILL.md`](skill/SKILL.md)** — Agent instructions. Drop the `skill/` directory into your agent's skill path.
+- **[`commands/forma.md`](commands/forma.md)** — Custom command for Claude Code. Symlink into your project's `.claude/commands/`.
 - **[`examples/birdtracker.forma`](examples/birdtracker.forma)** — Annotated example using all features.
 
 ## Features
@@ -142,11 +142,26 @@ forma/
 - **References as fields**: `bird: Bird`, `observations: [Observation]` — targets infer cardinality
 - **Satellite architecture**: Validation, target profiles, and layer overrides in separate files
 
-## Using the Agent Skill
+## Using the Custom Command
 
-Copy the `skill/` directory into your agent's skill path. The skill triggers on data modeling tasks — defining shapes, generating code, reviewing models, creating target profiles.
+```bash
+# Clone the forma repo
+git clone https://github.com/phansen314/forma ~/tools/forma
 
-The agent reads `SPEC.md` for format details and `SKILL.md` for task workflows. Reference docs in `skill/references/` provide the satellite architecture guide, a syntax cheat sheet, and a Kotlin profile example.
+# (Optional) Pin to a version
+cd ~/tools/forma && git checkout v8.0
+
+# Symlink the command — personal (all projects) or project-level
+# Personal:
+ln -s ~/tools/forma/commands/forma.md ~/.claude/commands/forma.md
+# Project:
+ln -s ~/tools/forma/commands/forma.md my-project/.claude/commands/forma.md
+
+# Use it
+# /forma mymodel.forma --kotlin
+```
+
+The command is self-contained — it includes syntax reference, task workflows, and diagnostic codes. For target-specific deep dives, it reads reference docs from the forma repo via symlink resolution.
 
 ## License
 

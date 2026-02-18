@@ -25,7 +25,7 @@ Use the existing examples as templates:
 - [`examples/birdtracker.kotlin.yaml`](examples/birdtracker.kotlin.yaml) — typed language profile
 - [`examples/birdtracker.sql.yaml`](examples/birdtracker.sql.yaml) — database DDL profile
 
-### 2. Reference doc: `skill/references/{target}-profile.md`
+### 2. Reference doc: `references/{target}-profile.md`
 
 Documentation that agents read when generating code for your target.
 
@@ -36,8 +36,8 @@ Documentation that agents read when generating code for your target.
 4. **Design Notes** — rationale for key decisions (why this choice strategy, why this atom representation, etc.)
 
 Use the existing references as templates:
-- [`skill/references/kotlin-profile.md`](skill/references/kotlin-profile.md)
-- [`skill/references/sql-profile.md`](skill/references/sql-profile.md)
+- [`references/kotlin-profile.md`](references/kotlin-profile.md)
+- [`references/sql-profile.md`](references/sql-profile.md)
 
 ### 3. Update `CLAUDE.md` and `README.md`
 
@@ -74,8 +74,7 @@ Add your new files to the repo structure blocks in both files.
 
 - **Spec clarifications**: Open an issue describing the ambiguity before submitting a PR
 - **New examples**: Additional model files beyond BirdTracker are welcome in `examples/`
-- **Validation satellites**: Follow the pattern in `examples/birdtracker.validate.yaml`
-- **Skill improvements**: Changes to `skill/SKILL.md` or reference docs — open an issue first to discuss
+- **Command improvements**: Changes to `commands/forma.md` or reference docs — open an issue first to discuss
 
 ## Questions?
 

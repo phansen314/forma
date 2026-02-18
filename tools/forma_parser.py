@@ -571,13 +571,6 @@ class _Parser:
 
         return base
 
-    # -- mixin field expansion (for IR compatibility) -----------------------
-
-    def _expand_mixins(self, ir: dict) -> dict:
-        """No-op: mixin expansion is handled by the validator/downstream.
-        The IR just records the `use:` list and `mixins:` definitions."""
-        return ir
-
 
 # ---------------------------------------------------------------------------
 # Public API

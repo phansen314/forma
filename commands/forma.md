@@ -1,22 +1,30 @@
 ---
-name: forma
-description: "Use this skill when the user wants to define, review, refine, or generate code from a data model. Also triggers on '/forma' command invocations with arguments. Triggers include: defining shapes, relationships, or schemas; creating or editing .forma or .yaml model files; generating data classes, ORM models, or DDL from a model; reviewing a data model for consistency; creating target profiles (Kotlin, TypeScript, SQL, etc.); or any mention of 'data model', 'schema definition', 'shapes', 'choices', 'mixins', or 'atoms' in the context of structured data modeling. Also triggers when the user wants to convert between data representations or create satellite documents (validation, target profiles). Do NOT use for general YAML editing, API endpoint design, or database administration tasks."
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash(python *), Bash(python3 *)
+argument-hint: "<hub-file> --<target> [satellites...] [--validate]"
 ---
 
-# Data Model Definition — Agent Skill
+# Forma — Data Model Definition Command
 
 ## Overview
 
-This skill enables agents to work with the Forma data model definition format. The hub format (`.forma`) describes the *shape* of data — shapes, fields, references — in a language-agnostic way. Target-specific code generation is driven by satellite documents.
+This command enables agents to work with the Forma data model definition format. The hub format (`.forma`) describes the *shape* of data — shapes, fields, references — in a language-agnostic way. Target-specific code generation is driven by satellite documents.
 
-**Read before starting any task:**
-- `../spec/SPEC.md` — The core format specification (required for all tasks)
-- `references/satellite-architecture.md` — How satellite documents work (required when generating code or creating target profiles)
+## Forma Repository
 
-**Read when relevant:**
-- `references/kotlin-profile.md` — Example target profile (read when generating Kotlin or creating new target profiles)
-- `references/quick-reference.md` — One-page syntax cheat sheet
-- `../examples/birdtracker.forma` — Complete working example
+This command is typically symlinked from the forma repository. To find tools and references, resolve the command file location:
+
+```
+readlink -f <path-to-this-command>
+```
+
+The forma repo root is the parent of the `commands/` directory containing this file. Tools are at `tools/` and references at `references/` relative to the repo root.
+
+**Read when relevant** (resolve paths from the repo root):
+- `references/kotlin-profile.md` — Kotlin target profile (read when generating Kotlin or creating new target profiles)
+- `references/sql-profile.md` — SQL target profile (read when generating SQL or creating database schemas)
+- `references/satellite-architecture.md` — Full satellite document pattern
+- `spec/SPEC.md` — The core format specification (authoritative reference for spec questions)
+- `examples/birdtracker.forma` — Complete working example
 
 ---
 
@@ -32,12 +40,13 @@ This skill enables agents to work with the Forma data model definition format. T
 | Create a target profile | Read `references/satellite-architecture.md` + example profile → draft profile |
 | Add validation rules | Create `model.validate.yaml` with named contexts referencing hub shapes |
 | Refine an existing model | Load → apply enrichment pipeline → propose changes with rationale |
+| Validate a hub file | Run `python tools/validate.py model.forma` → fix errors → re-validate |
 
 ---
 
 ## CLI Invocation
 
-When the user runs `/forma` with arguments, the skill uses structured satellite resolution instead of relying on the user to specify files manually.
+When the user runs `/forma` with arguments, the command uses structured satellite resolution instead of relying on the user to specify files manually.
 
 ### Syntax
 
@@ -74,7 +83,7 @@ When the user runs `/forma` with arguments, the skill uses structured satellite 
 When `/forma` is invoked, satellites are resolved in this order:
 
 1. **Hub** — parse `<hub-file>`
-2. **Convention satellite** — auto-discover `<stem>.<target>.yaml` in the same directory as the hub
+2. **Convention satellite** — the file at `<stem>.<target>.yaml` in the hub's directory, auto-discovered by naming convention (no explicit argument needed)
 3. **Explicit satellites** — load each `[satellite-files...]` in the order provided
 4. **Layer profiles** — auto-discover `<stem>.<target>.*.yaml` (excluding already-loaded files)
 
@@ -158,6 +167,201 @@ Errors: 3 unmapped atom(s): UserId, Email, bool
 
 ---
 
+## Hub Syntax Reference
+
+### Primitives (Atoms)
+
+`string` `text` `int` `float` `bool` `datetime` `date` `UUID` `json`
+
+These are atoms — the hub doesn't define them. Target profiles map them to concrete types.
+
+### Nullability
+
+Append `?` to any type. Non-null by default.
+
+```forma
+name: string          // required
+bio: text?            // nullable
+```
+
+### Collections
+
+```forma
+tags: [string]              // collection: zero or more values
+metadata: {string, json}    // association: key-value pairs
+items: [string]?            // nullable collection
+scores: [float?]            // nullable elements (warns)
+```
+
+Named wrappers allowed — defined in target profiles: `tree<T>`, etc.
+
+### Field Syntax
+
+Every field is `name: type` or `name: type?`. Nothing else in the hub.
+
+```forma
+name: string
+location: Location?
+tags: [string]
+bird: Bird
+observations: [Observation]
+```
+
+Constraints (`primary_key`, `unique`, `default`) are satellite concerns.
+
+### `.forma` Syntax
+
+```forma
+// Line comments use double-slash
+/* Block comments use slash-star (nestable) */
+
+(namespace com.example.myapp)            // optional — logical package identity
+
+(model AppName v1.0 "Description")
+
+// Mixins — shared field templates (optional type params, optional composition)
+(mixin Timestamped
+  created_at: datetime
+  updated_at: datetime?)
+
+(mixin Auditable [Timestamped]
+  created_by: UserId
+  updated_by: UserId?)
+
+(mixin Versioned<T>
+  current: T
+  history: [T]
+  version: int)
+
+// Choices — enum-like (all bare variants)
+(choice Status active archived deleted)
+
+// Choices — union-like (fielded variants)
+(choice Payment
+  (common
+    amount: float)
+  (CreditCard
+    number: string)
+  (BankTransfer
+    account: string)
+  Cash)                        // fieldless variant (marker)
+
+// Shapes — structured types with optional mixin fields
+(shape Location
+  latitude: float
+  longitude: float)
+
+(shape User [Timestamped]
+  id: UserId
+  email: Email
+  location: Location?
+  posts: [Post])
+
+(shape Bird [Versioned<Bird> Timestamped]
+  name: string
+  species: string)
+```
+
+### Plural Forms
+
+Group multiple definitions in a single form. Same IR output as singular forms.
+
+```forma
+(mixins
+  (Timestamped
+    created_at: datetime
+    updated_at: datetime?)
+  (Versioned<T>
+    current: T
+    history: [T]
+    version: int))
+
+(choices
+  (Status active archived deleted)
+  (Role admin editor viewer))
+
+(shapes
+  (Location
+    latitude: float
+    longitude: float)
+  (User [Timestamped]
+    id: UserId
+    email: Email))
+```
+
+Singular and plural forms can be mixed freely.
+
+### Cardinality Inference
+
+Targets infer cardinality from cross-references:
+
+| Side A | Side B | Cardinality |
+|--------|--------|-------------|
+| `posts: [Post]` | `author: User` | **1:N** |
+| `tags: [Tag]` | `posts: [Post]` | **N:M** |
+| `profile: Profile` | `user: User` | **1:1** |
+
+---
+
+## Satellite Architecture Essentials
+
+The hub (`model.forma`) describes what the data *is* — pure shape. Satellite documents describe how the data is *used*, *validated*, or *represented* in specific contexts.
+
+```
+model.forma               ← Hub: structure, shapes, references
+├── model.validate.yaml   ← Satellite: validation rules
+├── model.kotlin.yaml     ← Satellite: Kotlin generation profile
+├── model.sql.yaml        ← Satellite: SQL generation profile
+└── model.kotlin.api.yaml ← Satellite: Kotlin API layer overrides
+```
+
+### Core Rules
+
+1. **Satellites reference the hub by name.** They use shape names, field names, and choice names from the hub. They never redefine structural elements.
+2. **Satellites are independently optional.** The hub is self-contained. Any satellite can be absent without invalidating the model.
+3. **Satellites can stack.** A base Kotlin profile might set global immutability. A Kotlin API profile layers on serialization and DTOs. The agent merges them in order.
+4. **The hub never grows for satellite concerns.** Target-specific, validation-specific, or deployment-specific features go in satellites.
+5. **Hub namespace serves as default package.** If the hub declares `(namespace com.example.foo)`, generators use it as default. Satellites override via `package:`.
+6. **Constraints belong in satellites.** Primary keys, unique constraints, default values, and relationship details are satellite concerns.
+
+### Merge Order
+
+1. **Hub** (`model.forma`) — structural truth
+2. **Convention satellite** (`model.<target>.yaml`) — model-specific target profile discovered by naming convention
+3. **Explicit satellites** — additional satellite files provided directly (e.g., via CLI arguments)
+4. **Layer profiles** (`model.<target>.*.yaml`) — layer-specific overrides
+
+Later documents override earlier ones for conflicting keys. Non-conflicting keys accumulate.
+
+### Validation Satellite
+
+Named contexts with optional inheritance and atom-type defaults:
+
+```yaml
+validations:
+  base:
+    default:
+      string: [max_length: 10000]
+      datetime: [immutable]
+    User:
+      email: [format: email]
+      username: [min_length: 3, max_length: 50]
+  api:
+    extends: base
+    default:
+      string: [max_length: 50000]
+  persistence:
+    extends: base
+    default:
+      string: [max_length: 255]
+```
+
+Reserved keys in a context: `extends:`, `default:`. Everything else is a shape name.
+
+For the full satellite document pattern, read `references/satellite-architecture.md`.
+
+---
+
 ## Defining a New Model
 
 ### 1. Interview
@@ -215,6 +419,8 @@ Produce a `model.forma` following the spec. The `.forma` syntax is recommended f
 - Fields and choice variants: `snake_case`
 - Mixins: `PascalCase` descriptive adjectives (`Timestamped`, `SoftDeletable`, `Auditable`)
 
+**Validate the draft:** Run `python tools/validate.py model.forma` to check for structural errors before enrichment review. Fix any E-codes before proceeding; W-codes are informational.
+
 ### 3. Enrichment Review
 
 After drafting, review the model systematically:
@@ -231,6 +437,18 @@ After drafting, review the model systematically:
 | **Value shape candidates** | Groups of fields that always appear together (lat/lng, street/city/zip) → shape without identity |
 
 Present findings to the user as suggestions, not automatic changes. Explain rationale.
+
+### When to Extract a Mixin
+
+**Extract when:**
+- 3+ shapes share the same field group
+- The fields always appear together as a unit
+- The group has a clear, descriptive name (`Timestamped`, `SoftDeletable`, `Auditable`)
+
+**Leave separate when:**
+- Only 2 shapes share the fields — wait until a third appears
+- The fields are coincidentally similar but semantically different across shapes
+- Extracting would create a single-field mixin with no clear identity
 
 ---
 
@@ -284,7 +502,7 @@ Generate with reasonable defaults and note assumptions:
 
 ## Creating a Target Profile
 
-Read `references/satellite-architecture.md` and `references/kotlin-profile.md` first.
+Read `references/satellite-architecture.md` and the relevant `references/{target}-profile.md` first.
 
 A target profile covers these sections (all optional — omit what you don't need):
 
@@ -390,3 +608,75 @@ See `references/satellite-architecture.md` for the full pattern.
 ```forma
 (choice OrderStatus draft pending confirmed shipped delivered cancelled)
 ```
+
+---
+
+## Diagnostic Codes
+
+### Errors
+
+| Code | Scope | Description |
+|---|---|---|
+| E000 | Parse | `.forma` parse failure (syntax error, unterminated block comment, etc.) |
+| E001 | Meta | `meta` section is missing |
+| E002 | Meta | `meta.name` is missing or not a string |
+| E003 | Meta | `meta.version` is missing or not a string |
+| E004 | Meta | `meta.namespace` is present but not a non-empty string |
+| E010 | Top-level | Unknown top-level key (valid: `meta`, `shapes`, `choices`, `mixins`) |
+| E011 | Structure | Section or entry is not a mapping (wrong YAML/IR type) |
+| E041 | Type | Invalid field type — not a string, empty, or malformed association arity |
+| E042 | Type | Mixin used as a field type (use a shape instead) |
+| E050 | Choice | Choice has fewer than 2 variants |
+| E051 | Choice | Variant is not a mapping or empty |
+| E053 | Choice | `common` block is not a mapping |
+| E060 | Mixin | Mixin is malformed — missing fields, empty fields, or unknown sub-key |
+| E065 | Mixin | `type_params` is not a list, or a parameter is not a string |
+| E070 | Shape | Shape is missing `fields` section or has no fields |
+| E075 | Shape | Field type is not a string |
+| E083 | Shape | `use` list is not a list |
+| E084 | Shape | Unknown mixin referenced in shape's `use` list |
+| E085 | Shape | Unknown sub-key in shape (valid: `use`, `fields`) |
+| E086 | Shape | Mixin type argument arity mismatch |
+| E090 | Shape | Field name conflict between two composed mixins |
+| E091 | Mixin | Circular mixin composition detected |
+| E092 | Mixin | `use` list is not a list, or references an unknown mixin |
+| E100 | Global | Same name defined in two different sections |
+
+### Warnings
+
+| Code | Scope | Description |
+|---|---|---|
+| W012 | Shape | Shape field shadows a mixin field (shape field wins) |
+| W013 | Meta | `meta.description` is missing |
+| W015 | Type | Named wrapper used (e.g., `tree<T>`) — valid but noted |
+| W017 | Section | Section is declared but empty |
+| W019 | Type | Nullable element type inside a collection — discouraged |
+
+---
+
+## Bundled Tools
+
+Two Python tools provide automated validation and parsing. Both are standalone scripts with no dependencies beyond the Python standard library. Resolve paths from the forma repo root (see [Forma Repository](#forma-repository)).
+
+### Hub Validator
+
+```
+python tools/validate.py <model.forma>
+```
+
+Checks the hub for structural errors (E-codes) and warnings (W-codes). Exit codes: `0` = valid, `1` = errors found, `2` = bad usage.
+
+```
+$ python tools/validate.py examples/birdtracker.forma
+Validating examples/birdtracker.forma ...
+
+[OK] Model "BirdTracker" v8.0 is valid.
+```
+
+### DSL Parser
+
+```
+python tools/forma_parser.py <model.forma>
+```
+
+Parses a `.forma` file and outputs the intermediate representation as YAML. The IR contains keys `meta`, `shapes`, `choices`, and `mixins`. Useful for inspecting how the parser interprets a hub file.
