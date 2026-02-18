@@ -2,15 +2,15 @@
 
 ## Concept
 
-The data model system uses a hub-and-spoke document architecture. The hub (`model.forma`) describes what the data *is* — pure shape. Satellite documents describe how the data is *used*, *validated*, or *represented* in specific contexts.
+The data model system uses a hub-and-satellite document architecture. The hub (`model.forma`) describes what the data *is* — pure shape. Satellite documents describe how the data is *used*, *validated*, or *represented* in specific contexts.
 
 ```
 model.forma               ← Hub: structure, shapes, references (.forma recommended)
-├── model.validate.yaml   ← Spoke: validation rules
-├── model.kotlin.yaml     ← Spoke: Kotlin generation profile
-├── model.typescript.yaml ← Spoke: TypeScript generation profile
-├── model.sql.yaml        ← Spoke: SQL generation profile
-└── model.kotlin.api.yaml ← Spoke: Kotlin API layer overrides
+├── model.validate.yaml   ← Satellite: validation rules
+├── model.kotlin.yaml     ← Satellite: Kotlin generation profile
+├── model.typescript.yaml ← Satellite: TypeScript generation profile
+├── model.sql.yaml        ← Satellite: SQL generation profile
+└── model.kotlin.api.yaml ← Satellite: Kotlin API layer overrides
 ```
 
 Satellites are always `.yaml`.
