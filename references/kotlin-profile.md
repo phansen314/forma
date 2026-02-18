@@ -31,7 +31,7 @@ type_mappings:
 # Emitters — named output contexts
 # ──────────────────────────────────────
 # Each emitter contains both generation settings (package, immutability,
-# collections, serialization, validation) and concept mapping (default
+# collections, serialization) and concept mapping (default
 # styles + per-name overrides).
 #
 # `atoms:` is a reserved key — shared base type resolution for domain atoms.
@@ -72,14 +72,6 @@ emitters:
     # jackson               → @JsonProperty annotations
     # moshi                 → @Json annotations
     # none                  → no serialization annotations
-
-    validation:
-      library: jakarta-validation
-      # jakarta-validation → Jakarta Bean Validation annotations (@NotNull, @Size, @Email, etc.)
-      # none               → no validation annotations (default)
-      context: base
-      # Which named validation context from model.validate.yaml to apply.
-      # Omit to skip validation annotation generation.
 
     shape: data_class
     # data_class → data class (equals, hashCode, copy, destructuring)
@@ -246,7 +238,7 @@ data class Observation(
 
 ## Design Notes
 
-**Unified emitters**: Each named emitter contains both generation settings (*where* and *how* code is produced — package, immutability, collections, serialization, validation) and concept mapping (*what* each concept becomes — default styles and per-name overrides). A single hub shape can appear in multiple emitters — e.g., a bitmask for the game engine and a DTO for the API layer. Each emitter has `shape:` and `choice:` keys for default concept styles, plus per-name overrides. The generator infers the concept type (shape, choice, or atom) from the hub, so overrides don't need to declare which section they belong to.
+**Unified emitters**: Each named emitter contains both generation settings (*where* and *how* code is produced — package, immutability, collections, serialization) and concept mapping (*what* each concept becomes — default styles and per-name overrides). A single hub shape can appear in multiple emitters — e.g., a bitmask for the game engine and a DTO for the API layer. Each emitter has `shape:` and `choice:` keys for default concept styles, plus per-name overrides. The generator infers the concept type (shape, choice, or atom) from the hub, so overrides don't need to declare which section they belong to.
 
 **Atom resolution**: Domain atoms resolve through a two-layer chain: `emitters.atoms` maps domain atoms to base types (`BirdId: UUID`, `Email: string`), and `type_mappings` maps base types to target-specific types (`UUID: java.util.UUID`, `string: String`). Primitive atoms (like `int`, `string`) go directly through `type_mappings` without needing an `atoms` entry. Per-name style overrides in emitters (e.g., `BirdId: { style: value_class }`) control *how* the atom is represented — they reference the base type from `atoms:`. Atoms without a style override get transparent treatment (typealias in Kotlin, plain column type in SQL).
 
