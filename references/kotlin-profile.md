@@ -285,8 +285,8 @@ Each entry is `field_name: width` where width is an integer number of bits. Thre
 | Form | Meaning |
 |---|---|
 | `field: N` | Field occupies N bits. Getter returns `Int` (or the mapped atom type). |
-| `field: N per enum` | Association field. N bits **per variant** of the key enum (excluding wildcards like `wild`). Hub declares the association type (e.g., `{Food, int}`), so the enum name is already known. |
-| `field: N of enum` | Fixed-capacity array. N elements of the field's choice type. Bits per element = `ceil(log2(variant_count + 1))` (+1 reserves a sentinel for empty slots). Hub declares the collection type (e.g., `[DiceFace]`). |
+| `field: N per enum` | Association field. N bits **per variant** of the key enum. Hub declares the association type (e.g., `{Resource, int}`), so the enum name is already known. |
+| `field: N of enum` | Fixed-capacity array. N elements of the field's choice type. Bits per element = `ceil(log2(variant_count + 1))` (+1 reserves a sentinel for empty slots). Hub declares the collection type (e.g., `[Slot]`). |
 
 ### Auto-inference of choice-typed fields
 
@@ -319,16 +319,16 @@ Common to both mutation modes:
 Backing: `@JvmInline value class` wrapping `Int` or `Long`. Zero allocation overhead — the JVM sees a plain primitive.
 
 - **`withX()` methods** — `fun withFieldName(value: Type): ShapeName` returning a new instance with that field updated
-- **Per-enum fields** (`N per enum`) — `fun cachedFood(food: Food): Int` accessor, `val totalCachedFood: Int` aggregate; `fun withCachedFood(food: Food, count: Int): ShapeName` returns new instance
-- **Array-of-enum fields** (`N of enum`) — `val slots: List<DiceFace>` getter, `val slotCount: Int`; `fun withSlot(index: Int, value: DiceFace?): ShapeName` returns new instance
+- **Per-enum fields** (`N per enum`) — `fun inventory(resource: Resource): Int` accessor, `val totalInventory: Int` aggregate; `fun withInventory(resource: Resource, count: Int): ShapeName` returns new instance
+- **Array-of-enum fields** (`N of enum`) — `val slots: List<Slot>` getter, `val slotCount: Int`; `fun withSlot(index: Int, value: Slot?): ShapeName` returns new instance
 
 #### `mutation: in_place`
 
 Backing: `class` with `var bits: Int` (or `Long`). Allows true in-place mutation at the cost of heap allocation.
 
 - **`setX()` methods** — `fun setFieldName(value: Type)` mutates the backing bits directly
-- **Per-enum fields** (`N per enum`) — `fun cachedFood(food: Food): Int` accessor, `val totalCachedFood: Int` aggregate; `fun setCachedFood(food: Food, count: Int)` mutates in place
-- **Array-of-enum fields** (`N of enum`) — `val slots: List<DiceFace>` getter, `val slotCount: Int`; `fun setSlot(index: Int, value: DiceFace?)` mutates in place
+- **Per-enum fields** (`N per enum`) — `fun inventory(resource: Resource): Int` accessor, `val totalInventory: Int` aggregate; `fun setInventory(resource: Resource, count: Int)` mutates in place
+- **Array-of-enum fields** (`N of enum`) — `val slots: List<Slot>` getter, `val slotCount: Int`; `fun setSlot(index: Int, value: Slot?)` mutates in place
 
 ---
 
